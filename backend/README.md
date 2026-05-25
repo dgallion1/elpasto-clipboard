@@ -41,7 +41,7 @@ make build
 
 This runs `next build`, packages the frontend into `backend/internal/frontend/dist`, and compiles the final Go binary.
 
-On startup, the server restores `DATA_DIR/snapshot.json` before sweeping uploads. Upload directories are now legacy state; the active clip flow is peer-only and keeps customer clip payloads in browsers rather than on the server.
+On startup, the server restores `DATA_DIR/snapshot.json` so sessions survive restarts. Clip payloads travel peer-to-peer via WebRTC and never touch the server.
 
 ## Test
 
@@ -123,7 +123,7 @@ The server does not store customer clip payloads in the current architecture. Br
 - `RATE_LIMIT_TUNNEL_AUTH_STARTS_PER_HOUR` (default 10)
 - `RATE_LIMIT_TUNNEL_AUTH_CALLBACKS_PER_HOUR` (default 30)
 
-The upload-related limits remain in config for now but are effectively dormant in the current peer-only clip flow.
+
 
 ## Tunnel Auth Gate
 

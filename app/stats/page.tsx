@@ -10,7 +10,7 @@ interface StatsSnapshot {
   sessions_created: number;
   session_views: number;
   clips_created: number;
-  file_uploads: number;
+
   active_sessions: number;
   sse_connections: number;
   active_tunnels: number;
@@ -100,7 +100,7 @@ export default function StatsPage() {
       { label: "Sessions created", value: s.sessions_created.toLocaleString(), accent: "blue" as const },
       { label: "Session views", value: s.session_views.toLocaleString(), accent: "neutral" as const },
       { label: "Clips shared (offers)", value: s.clips_created.toLocaleString(), accent: "emerald" as const },
-      { label: "File uploads (legacy)", value: s.file_uploads.toLocaleString(), accent: "neutral" as const },
+
       { label: "Active sessions", value: s.active_sessions.toLocaleString(), accent: "emerald" as const },
       { label: "SSE connections", value: s.sse_connections.toLocaleString(), accent: "emerald" as const },
       { label: "Sessions with viewers", value: s.sessions_with_viewers.toLocaleString(), accent: "emerald" as const },
