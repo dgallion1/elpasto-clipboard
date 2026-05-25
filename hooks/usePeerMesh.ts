@@ -1479,9 +1479,8 @@ export function usePeerMesh({
       emitLocalBinaryClips();
 
       // Pre-encrypt when a secret is provided so ciphertext is available
-      // in IDB for the server upload path (addFileClip reads it back).
-      // Without this, encryption only happens inside sendTransferToPeer
-      // which is skipped when no peers are connected.
+      // in IDB before peers connect. Without this, encryption only happens
+      // inside sendTransferToPeer which is skipped when no peers are connected.
       if (secretHandle) {
         await buildTransferFromEntry(entry, undefined, secretHandle);
         emitLocalBinaryClips();
