@@ -29,8 +29,11 @@ type handler struct {
 	statsHTML      []byte
 }
 
+// fsSubFunc wraps fs.Sub. Replaced in tests to exercise the panic guard.
+var fsSubFunc = fs.Sub
+
 func Handler() http.Handler {
-	distRoot, err := fs.Sub(distFS, "dist")
+	distRoot, err := fsSubFunc(distFS, "dist")
 	if err != nil {
 		panic("frontend: embedded dist directory missing: " + err.Error())
 	}
@@ -233,8 +236,12 @@ func extractPeerFromPrefix(requestPath, prefix string) (string, bool) {
 	return peerId, true
 }
 
+// jsonMarshalString marshals a string to JSON. Replaced in tests to exercise
+// the defensive fallback in escapedTokenValue.
+var jsonMarshalString = func(s string) ([]byte, error) { return json.Marshal(s) }
+
 func escapedTokenValue(token string) []byte {
-	encoded, err := json.Marshal(token)
+	encoded, err := jsonMarshalString(token)
 	if err != nil || len(encoded) < 2 {
 		return []byte(token)
 	}

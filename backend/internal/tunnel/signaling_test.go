@@ -323,3 +323,26 @@ func TestSignalingClientSubscribeConnectionError(t *testing.T) {
 		t.Error("expected error for connection failure")
 	}
 }
+
+// TestSignalingClientSendMarshalError verifies that Send returns an error when
+// json.Marshal of the SignalMessage fails. We trigger this by putting a channel
+// (unmarshalable value) into the Description map.
+func TestSignalingClientSendMarshalError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := tunnel.NewSignalingClient(srv.URL, "token", "peer-a")
+	msg := tunnel.SignalMessage{
+		FromPeerID: "peer-a",
+		SignalType: "description",
+		Description: map[string]any{
+			"unmarshalable": make(chan int), // channels cannot be marshaled to JSON
+		},
+	}
+	err := c.Send(context.Background(), msg)
+	if err == nil {
+		t.Error("expected error for unmarshalable SignalMessage")
+	}
+}

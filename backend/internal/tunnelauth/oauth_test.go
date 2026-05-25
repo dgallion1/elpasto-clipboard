@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -959,5 +960,135 @@ func TestValidateIDTokenConnectionError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "tokeninfo request") {
 		t.Fatalf("expected 'tokeninfo request' in error, got: %v", err)
+	}
+}
+
+// errReader is an io.Reader that always returns an error.
+type errReader struct{ err error }
+
+func (r *errReader) Read([]byte) (int, error) { return 0, r.err }
+
+// errRoundTripper returns a response with an error-producing body.
+type errRoundTripper struct{ bodyErr error }
+
+func (rt *errRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(&errReader{err: rt.bodyErr}),
+		Header:     make(http.Header),
+	}, nil
+}
+
+func TestExchangeCode_BodyReadError(t *testing.T) {
+	cfg := testConfig()
+	h, _ := New(cfg, &http.Client{
+		Transport: &errRoundTripper{bodyErr: fmt.Errorf("connection reset")},
+	}, log.Default())
+	h.tokenURL = "http://fake-google.test/token"
+
+	_, err := h.exchangeCode("some-code", "http://localhost/callback")
+	if err == nil {
+		t.Fatal("expected error from body read failure")
+	}
+	if !strings.Contains(err.Error(), "read token response") {
+		t.Fatalf("expected 'read token response' in error, got: %v", err)
+	}
+}
+
+func TestValidateIDToken_BodyReadError(t *testing.T) {
+	cfg := testConfig()
+	h, _ := New(cfg, &http.Client{
+		Transport: &errRoundTripper{bodyErr: fmt.Errorf("connection reset")},
+	}, log.Default())
+	h.tokenInfoURL = "http://fake-google.test/tokeninfo"
+
+	_, err := h.validateIDToken("fake-token")
+	if err == nil {
+		t.Fatal("expected error from body read failure")
+	}
+	if !strings.Contains(err.Error(), "read tokeninfo response") {
+		t.Fatalf("expected 'read tokeninfo response' in error, got: %v", err)
+	}
+}
+
+func TestCallbackMintFailure(t *testing.T) {
+	// To reach the Mint failure inside Callback, we need:
+	// 1. ValidateState to pass (requires correct secret)
+	// 2. exchangeCode to pass (returns valid id_token)
+	// 3. validateIDToken to pass (returns valid claims)
+	// 4. isAuthorized to pass (email in allowlist)
+	// 5. Mint to fail
+	//
+	// Mint only fails with empty secret. We can't have ValidateState pass with
+	// empty secret. Instead, we sabotage the secret AFTER ValidateState runs
+	// by using a custom handler that clears the secret at the right moment.
+	//
+	// The simplest approach: use a token endpoint that is slow enough for us
+	// to clear the secret concurrently. But that's racy.
+	//
+	// Better: override the Callback to test the Mint branch via the
+	// exchangeCode/validateIDToken integration. Actually, the cleanest way is
+	// to create a fake Google server where the token endpoint clears h.cfg.AuthSecret
+	// as a side effect before returning the id_token.
+	cfg := testConfig()
+	idToken := fakeIDToken(idTokenClaims{
+		Iss:           "https://accounts.google.com",
+		Aud:           cfg.ClientID,
+		Sub:           "google-sub-123",
+		Email:         "alice@example.com",
+		EmailVerified: true,
+		Exp:           time.Now().Add(time.Hour).Unix(),
+	})
+
+	h, err := New(cfg, nil, log.Default())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Create a fake Google server that sabotages the auth secret when the
+	// token endpoint is called (after ValidateState has already passed).
+	mux := http.NewServeMux()
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		// Sabotage: clear the auth secret so Mint will fail.
+		h.cfg.AuthSecret = ""
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"id_token": idToken})
+	})
+	mux.HandleFunc("/tokeninfo", func(w http.ResponseWriter, r *http.Request) {
+		tok := r.URL.Query().Get("id_token")
+		parts := strings.SplitN(tok, ".", 3)
+		if len(parts) != 3 {
+			http.Error(w, `{"error":"invalid_token"}`, http.StatusBadRequest)
+			return
+		}
+		payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+		if err != nil {
+			http.Error(w, `{"error":"invalid_token"}`, http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(payload)
+	})
+	googleSrv := httptest.NewServer(mux)
+	defer googleSrv.Close()
+
+	h.tokenURL = googleSrv.URL + "/token"
+	h.tokenInfoURL = googleSrv.URL + "/tokeninfo"
+
+	state, _ := MintState(cfg.AuthSecret, 54321)
+
+	req := httptest.NewRequest("GET",
+		fmt.Sprintf("/api/auth/tunnel/callback?code=test-code&state=%s", url.QueryEscape(state)), nil)
+	req.Host = "example.com"
+	w := httptest.NewRecorder()
+	h.Callback(w, req)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302; body: %s", w.Code, w.Body.String())
+	}
+	loc := w.Header().Get("Location")
+	u, _ := url.Parse(loc)
+	if u.Query().Get("error") != "internal_error" {
+		t.Fatalf("expected internal_error, got: %s", u.Query().Get("error"))
 	}
 }

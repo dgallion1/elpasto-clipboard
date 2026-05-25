@@ -26,9 +26,9 @@ func MintState(secret string, port int) (string, error) {
 	}
 
 	nonce := make([]byte, nonceBytes)
-	if _, err := rand.Read(nonce); err != nil {
-		return "", fmt.Errorf("tunnelauth: generate nonce: %w", err)
-	}
+	// crypto/rand.Read always succeeds (Go 1.24+); panics fatally on
+	// catastrophic entropy failure so there is no error to handle.
+	rand.Read(nonce)
 
 	nonceB64 := base64.RawURLEncoding.EncodeToString(nonce)
 	portStr := strconv.Itoa(port)

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -574,6 +575,9 @@ func TestFromEnvAllFieldsExplicit(t *testing.T) {
 	t.Setenv("RATE_LIMIT_TUNNEL_AUTH_STARTS_PER_HOUR", "20")
 	t.Setenv("RATE_LIMIT_TUNNEL_AUTH_CALLBACKS_PER_HOUR", "60")
 	t.Setenv("TUNNEL_BASE_URL", "https://t.example.com/")
+	t.Setenv("STATS_DASHBOARD_KEY", "dash-key-123")
+	t.Setenv("PLAUSIBLE_SCRIPT_URL", "https://pa.example.com/js/pa.js")
+	t.Setenv("PLAUSIBLE_EVENT_URL", "https://pa.example.com/api/event")
 
 	cfg := FromEnv()
 
@@ -642,5 +646,65 @@ func TestFromEnvAllFieldsExplicit(t *testing.T) {
 	}
 	if cfg.TunnelBaseURL != "https://t.example.com/" {
 		t.Errorf("TunnelBaseURL = %q", cfg.TunnelBaseURL)
+	}
+	if cfg.StatsDashboardKey != "dash-key-123" {
+		t.Errorf("StatsDashboardKey = %q", cfg.StatsDashboardKey)
+	}
+	if cfg.PlausibleScriptURL != "https://pa.example.com/js/pa.js" {
+		t.Errorf("PlausibleScriptURL = %q", cfg.PlausibleScriptURL)
+	}
+	if cfg.PlausibleEventURL != "https://pa.example.com/api/event" {
+		t.Errorf("PlausibleEventURL = %q", cfg.PlausibleEventURL)
+	}
+}
+
+func TestFromEnv_GetwdErrorFallback(t *testing.T) {
+	// When os.Getwd() fails, FromEnv should fall back to "." for path construction.
+	// We trigger this by chdir-ing into a temp directory and then removing it.
+	// On Linux, os.Getwd() returns an error when cwd no longer exists.
+
+	// Clear DATA_DIR and DOWNLOADS_DIR so FromEnv uses the wd-based defaults.
+	t.Setenv("DATA_DIR", "")
+	t.Setenv("DOWNLOADS_DIR", "")
+
+	// Save original working directory to restore after the test.
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get original wd: %v", err)
+	}
+
+	// Create a temp dir, chdir into it, then remove it to break os.Getwd().
+	tmp, err := os.MkdirTemp("", "config-getwd-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	if err := os.Chdir(tmp); err != nil {
+		os.RemoveAll(tmp)
+		t.Fatalf("failed to chdir: %v", err)
+	}
+	// Remove the directory out from under us.
+	os.RemoveAll(tmp)
+
+	// Ensure we restore cwd regardless of test outcome.
+	defer func() {
+		os.Chdir(origWd)
+	}()
+
+	cfg := FromEnv()
+
+	// With getwd failing, wd falls back to ".", so defaults become:
+	//   DataDir      = filepath.Join(".", "data")      = "data"
+	//   DownloadsDir = filepath.Join(".", "downloads")  = "downloads"
+	wantData := filepath.Join(".", "data")
+	wantDownloads := filepath.Join(".", "downloads")
+	if cfg.DataDir != wantData {
+		t.Errorf("DataDir = %q, want %q (getwd error fallback)", cfg.DataDir, wantData)
+	}
+	if cfg.DownloadsDir != wantDownloads {
+		t.Errorf("DownloadsDir = %q, want %q (getwd error fallback)", cfg.DownloadsDir, wantDownloads)
+	}
+	// Verify the paths don't contain the deleted temp directory.
+	if strings.Contains(cfg.DataDir, tmp) {
+		t.Errorf("DataDir %q unexpectedly contains deleted dir %q", cfg.DataDir, tmp)
 	}
 }

@@ -1,6 +1,8 @@
 package store
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -256,18 +258,46 @@ func TestFindSessionByTokenPrefixMultipleMatches(t *testing.T) {
 }
 
 func TestCreateSessionTokenCollision(t *testing.T) {
-	// Simulate the token collision retry limit by pre-filling with known tokens.
-	// We can't easily force rand.Int to collide, but we can test with a very
-	// small word list (1 word) which guarantees all tokens are the same.
+	// Use the generateToken hook to always produce the same token,
+	// guaranteeing every attempt collides with the existing session.
 	s := New(24)
-	// Create first session — will use the only possible token.
-	sess1, err := s.CreateSession()
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
+	s.generateToken = func() (string, error) {
+		return "always-the-same-token-here", nil
 	}
-	_ = sess1
-	// The token is deterministic with a 1-word list? No - it uses real rand.
-	// Instead, test the capacity error path through the normal interface.
+
+	// First call succeeds — the token is not yet in the map.
+	sess, err := s.CreateSession()
+	if err != nil {
+		t.Fatalf("first CreateSession: %v", err)
+	}
+	if sess.Token != "always-the-same-token-here" {
+		t.Fatalf("token = %q, want %q", sess.Token, "always-the-same-token-here")
+	}
+
+	// Second call: all 8 attempts collide with the existing token.
+	_, err = s.CreateSession()
+	if err == nil {
+		t.Fatal("expected error from collision retry exhaustion")
+	}
+	if !strings.Contains(err.Error(), "collision retry limit reached") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCreateSessionTokenGenerateError(t *testing.T) {
+	// Verify that a token generation error propagates correctly.
+	s := New(24)
+	s.generateToken = func() (string, error) {
+		return "", fmt.Errorf("entropy source failed")
+	}
+
+	_, err := s.CreateSession()
+	if err == nil {
+		t.Fatal("expected error from token generation failure")
+	}
+	if !strings.Contains(err.Error(), "generate token") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func TestFindSessionByTokenPrefixExpired(t *testing.T) {

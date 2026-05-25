@@ -2,6 +2,7 @@ package cleanup
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"strings"
@@ -148,4 +149,35 @@ type chanWriter struct {
 func (w *chanWriter) Write(p []byte) (int, error) {
 	w.ch <- string(p)
 	return len(p), nil
+}
+
+func TestStartLogsRunError(t *testing.T) {
+	// Exercise the error branch in Start (lines 39-41).
+	// Run() currently never returns an error, so we inject one via runFn.
+	metaStore := store.New(24)
+
+	logCh := make(chan string, 10)
+	logWriter := &chanWriter{ch: logCh}
+	runner := New(metaStore, log.New(logWriter, "", 0))
+
+	// Override runFn to return an error.
+	runner.runFn = func() (int, error) {
+		return 0, fmt.Errorf("injected cleanup error")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runner.Start(ctx, 10*time.Millisecond)
+
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case msg := <-logCh:
+			if strings.Contains(msg, "cleanup failed: injected cleanup error") {
+				return
+			}
+		case <-deadline:
+			t.Fatal("expected error log message within 1s")
+		}
+	}
 }

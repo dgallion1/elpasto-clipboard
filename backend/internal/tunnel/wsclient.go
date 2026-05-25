@@ -39,11 +39,7 @@ type WSRelay struct {
 func NewWSRelay(serverURL, token, peerID, label string, port int, proxy *Proxy, logger *log.Logger, authToken string) *WSRelay {
 	// Generate a stable access token once — reused across reconnects so the
 	// tunnel URL doesn't change.
-	accessToken, err := generateAccessToken()
-	if err != nil {
-		// Extremely unlikely; fall back to letting the server generate one.
-		accessToken = ""
-	}
+	accessToken := generateAccessToken()
 	return &WSRelay{
 		serverURL:   strings.TrimRight(serverURL, "/"),
 		token:       token,

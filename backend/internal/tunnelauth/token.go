@@ -26,10 +26,9 @@ func Mint(secret string, claims TokenClaims, ttl time.Duration) (string, error) 
 		return "", fmt.Errorf("tunnelauth: empty secret")
 	}
 	claims.Exp = time.Now().Add(ttl).Unix()
-	payload, err := json.Marshal(claims)
-	if err != nil {
-		return "", fmt.Errorf("tunnelauth: marshal claims: %w", err)
-	}
+	// TokenClaims contains only string and int64 fields — json.Marshal
+	// is guaranteed to succeed for this type.
+	payload, _ := json.Marshal(claims)
 	payloadB64 := base64.RawURLEncoding.EncodeToString(payload)
 	sig := sign(secret, payloadB64)
 	return tokenPrefix + payloadB64 + "." + sig, nil

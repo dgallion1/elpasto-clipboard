@@ -1647,6 +1647,43 @@ func TestProxyMalformedRequestJSON(t *testing.T) {
 	readMsg(t, sendCh, tunnel.MsgResponseEnd)
 }
 
+// TestProxyInvalidHTTPMethod verifies that an invalid HTTP method in the
+// tunnel:request returns an error response. This exercises the
+// http.NewRequestWithContext error path in proxyRequest.
+func TestProxyInvalidHTTPMethod(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	sendCh, recvCh := runProxy(t, srv.URL)
+
+	// Send a request with an invalid HTTP method containing a space (rejected by net/http).
+	reqMsg, _ := tunnel.Encode(tunnel.RequestMsg{
+		Type:      tunnel.MsgRequest,
+		RequestID: "invalid-method-test",
+		Method:    "INVALID METHOD",
+		URL:       "/test",
+	})
+	recvCh <- reqMsg
+
+	endMsg, _ := tunnel.Encode(tunnel.RequestEndMsg{
+		Type:      tunnel.MsgRequestEnd,
+		RequestID: "invalid-method-test",
+	})
+	recvCh <- endMsg
+
+	// Should get a tunnel:error response.
+	raw := readMsg(t, sendCh, tunnel.MsgError)
+	var errMsg tunnel.ErrorMsg
+	if err := json.Unmarshal(raw, &errMsg); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if !strings.Contains(errMsg.Message, "build request") {
+		t.Errorf("error message = %q, expected to contain 'build request'", errMsg.Message)
+	}
+}
+
 // TestProxyHTMLWithHeadTag verifies injection after <head>.
 func TestProxyHTMLWithUppercaseHead(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

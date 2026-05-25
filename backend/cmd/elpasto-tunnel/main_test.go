@@ -113,6 +113,22 @@ func TestParseCLIArgsSuccess(t *testing.T) {
 	}
 }
 
+func TestRunReturnsNonZeroOnBadArgs(t *testing.T) {
+	restore := restoreMainHooks()
+	defer restore()
+
+	// executeMain should never be called when args are invalid.
+	executeMain = func(cfg tunnelCLIConfig, logger *log.Logger) {
+		t.Fatal("executeMain should not be called for invalid args")
+	}
+
+	var stderr bytes.Buffer
+	code := run([]string{"--session", ""}, &stderr) // missing session
+	if code == 0 {
+		t.Fatal("run should return non-zero exit code for invalid args")
+	}
+}
+
 func TestRunPassesParsedConfigToExecutor(t *testing.T) {
 	restore := restoreMainHooks()
 	defer restore()

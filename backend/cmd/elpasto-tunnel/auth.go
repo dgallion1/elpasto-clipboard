@@ -21,8 +21,10 @@ type browserCommand interface {
 	Start() error
 }
 
+// authTimeout is a var so tests can shorten it to exercise the timeout path.
+var authTimeout = 2 * time.Minute
+
 const (
-	authTimeout    = 2 * time.Minute
 	tokenFilePerms = 0600
 	tokenDirPerms  = 0700
 	tokenFileName  = "tunnel-token"
@@ -121,10 +123,12 @@ func isTokenExpired(token string) bool {
 	return time.Now().Unix() > claims.Exp
 }
 
+var listenAddr = "127.0.0.1:0"
+
 // runBrowserAuth starts a local HTTP server, opens the browser to the OAuth
 // start endpoint, and waits for the callback with the token.
 func runBrowserAuth(ctx context.Context, serverURL string, logger *log.Logger) (string, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		return "", fmt.Errorf("listen: %w", err)
 	}
@@ -210,9 +214,11 @@ func openBrowserCommandSpec(goos, url string) (string, []string, error) {
 	}
 }
 
+var runtimeGOOS = runtime.GOOS
+
 // openBrowser opens a URL in the default browser.
 func openBrowser(url string) error {
-	name, args, err := openBrowserCommandSpec(runtime.GOOS, url)
+	name, args, err := openBrowserCommandSpec(runtimeGOOS, url)
 	if err != nil {
 		return err
 	}

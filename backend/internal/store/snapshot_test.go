@@ -549,6 +549,32 @@ func TestSaveSnapshotExtendsShortExpiry(t *testing.T) {
 	}
 }
 
+func TestRestoreSnapshotZeroExpirySkipsSession(t *testing.T) {
+	// With expiryHours=0, minExpiry equals now, so the extended expiresAt
+	// is equal to now (not after now). The strict After check causes the
+	// session to be skipped, covering the "still expired after extension"
+	// continue branch.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "snapshot.json")
+
+	data := `{"version":1,"saved_at":"2026-03-15T12:00:00Z","next_session_id":2,"sessions":[` +
+		`{"id":1,"token":"alpha-bravo-charlie-delta-echo","created_at":"2026-03-15T10:00:00Z","expires_at":"2026-03-15T11:00:00Z"}` +
+		`]}`
+	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	s := New(0) // zero expiry hours: minExpiry == now
+	s.now = func() time.Time { return time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC) }
+	sessions, _, err := s.RestoreSnapshot(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sessions != 0 {
+		t.Fatalf("expected 0 sessions (expired even after extension), got %d", sessions)
+	}
+}
+
 func TestRestoreSnapshotAdvancesNextSessionID(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "snapshot.json")

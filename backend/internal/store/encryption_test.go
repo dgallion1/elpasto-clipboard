@@ -328,3 +328,13 @@ func TestParseEncryptionMeta_UnmarshalableType(t *testing.T) {
 		t.Errorf("V = %d, want 1", meta.V)
 	}
 }
+
+func TestParseEncryptionMeta_MarshalError(t *testing.T) {
+	// A channel cannot be marshaled by json.Marshal, triggering the
+	// error path inside the default case of the type switch.
+	ch := make(chan int)
+	_, err := ParseEncryptionMeta(ch)
+	if err == nil {
+		t.Fatal("expected error for unmarshalable type (channel)")
+	}
+}

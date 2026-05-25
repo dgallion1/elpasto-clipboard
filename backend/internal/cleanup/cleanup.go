@@ -11,13 +11,16 @@ import (
 type Runner struct {
 	store  *store.Store
 	logger *log.Logger
+	runFn  func() (int, error) // defaults to Run; tests may override
 }
 
 func New(s *store.Store, logger *log.Logger) *Runner {
-	return &Runner{
+	r := &Runner{
 		store:  s,
 		logger: logger,
 	}
+	r.runFn = r.Run
+	return r
 }
 
 func (r *Runner) Run() (int, error) {
@@ -35,7 +38,7 @@ func (r *Runner) Start(ctx context.Context, interval time.Duration) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				removed, err := r.Run()
+				removed, err := r.runFn()
 				if err != nil {
 					r.logger.Printf("cleanup failed: %v", err)
 					continue

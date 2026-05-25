@@ -1,6 +1,7 @@
 package frontend
 
 import (
+	"errors"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -458,5 +459,57 @@ func TestHandlerUsesEmbeddedDist(t *testing.T) {
 	}
 	if strings.TrimSpace(rec.Body.String()) == "" {
 		t.Fatal("expected embedded handler build version response body")
+	}
+}
+
+func TestHandlerPanicsOnFsSubError(t *testing.T) {
+	original := fsSubFunc
+	t.Cleanup(func() { fsSubFunc = original })
+
+	fsSubFunc = func(fsys fs.FS, dir string) (fs.FS, error) {
+		return nil, errors.New("forced sub error")
+	}
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic for broken fs.Sub")
+		}
+		msg, ok := r.(string)
+		if !ok || !strings.Contains(msg, "embedded dist directory missing") {
+			t.Fatalf("unexpected panic value: %v", r)
+		}
+	}()
+
+	Handler()
+}
+
+func TestEscapedTokenValueMarshalError(t *testing.T) {
+	original := jsonMarshalString
+	t.Cleanup(func() { jsonMarshalString = original })
+
+	// Simulate json.Marshal returning an error.
+	jsonMarshalString = func(s string) ([]byte, error) {
+		return nil, errors.New("forced error")
+	}
+
+	got := escapedTokenValue("hello")
+	if string(got) != "hello" {
+		t.Fatalf("expected fallback to raw token, got %q", got)
+	}
+}
+
+func TestEscapedTokenValueShortMarshal(t *testing.T) {
+	original := jsonMarshalString
+	t.Cleanup(func() { jsonMarshalString = original })
+
+	// Simulate json.Marshal returning a single-byte result (len < 2).
+	jsonMarshalString = func(s string) ([]byte, error) {
+		return []byte("x"), nil
+	}
+
+	got := escapedTokenValue("hello")
+	if string(got) != "hello" {
+		t.Fatalf("expected fallback to raw token, got %q", got)
 	}
 }

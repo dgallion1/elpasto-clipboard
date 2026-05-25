@@ -3265,3 +3265,66 @@ func TestRoutesSessionValidatorAndClientIPClosures(t *testing.T) {
 	}
 }
 
+// NOTE: handleListDownloads has one uncovered statement (downloads.go line 44):
+// the entry.Info() error branch. On Linux, DirEntry.Info() uses Lstat which
+// succeeds even for broken symlinks. This path only triggers on I/O errors
+// (disk failure, concurrent deletion between ReadDir and Info) and exists as
+// defense-in-depth for filesystem edge cases.
+
+func TestCreateSessionAtCapacityIntegration(t *testing.T) {
+	// Fill the store to its DefaultMaxSessions (10000) limit, then verify that
+	// the next create request returns 503 Service Unavailable.
+	app, serverURL := newTestServer(t, func(cfg *config.Config) {
+		cfg.RateLimitCreatePerHour = 20000 // high enough to not rate-limit
+	})
+
+	for i := 0; i < store.DefaultMaxSessions; i++ {
+		if _, err := app.store.CreateSession(); err != nil {
+			t.Fatalf("fill store at %d: %v", i, err)
+		}
+	}
+
+	resp, err := http.Post(serverURL+"/api/sessions", "", nil)
+	if err != nil {
+		t.Fatalf("create session at capacity: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 at capacity, got %d", resp.StatusCode)
+	}
+
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !strings.Contains(body.Error, "capacity") {
+		t.Fatalf("error = %q, expected capacity message", body.Error)
+	}
+
+	// NOTE: The non-ErrAtCapacity internal error path (line 57 of
+	// handlers_session.go) is unreachable without modifying production code
+	// or mocking the store. The store's CreateSession only returns
+	// ErrAtCapacity or token-generation errors (which require crypto/rand
+	// failure). This path exists as defensive code.
+}
+
+// NOTE: server.New has one uncovered statement (server.go lines 97-99):
+// the tunnelauth.New error return. This is unreachable because
+// ValidateTunnelAuth (called earlier) validates the same constraints.
+// It exists as defense-in-depth for future tunnelauth.New validation.
+//
+// NOTE: handleCreateSession has 3 uncovered statements (handlers_session.go
+// lines 56-58): the non-ErrAtCapacity error path from store.CreateSession.
+// The store only returns ErrAtCapacity or token generation errors (which
+// require crypto/rand failure). This is defensive code.
+//
+// NOTE: handleSessionEvents has 8 uncovered statements:
+// - lines 53-57: time.Parse error on session ExpiresAt (store always produces valid RFC3339)
+// - lines 82-84: writeSSEEvent error during expiry (requires write failure mid-stream)
+// - lines 87-89: keepalive ticker body (requires 25+ second wait, impractical)
+// - lines 91-93: subscription channel close (!ok) (unreachable in current broker design)
+// - lines 94-96: writeSSEEvent error during subscription event (requires write failure)
+

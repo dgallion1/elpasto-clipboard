@@ -296,6 +296,48 @@ func TestTokenCachePath_XDGConfigHome(t *testing.T) {
 	}
 }
 
+func TestRunBrowserAuth_ListenError(t *testing.T) {
+	origAddr := listenAddr
+	t.Cleanup(func() { listenAddr = origAddr })
+
+	// Use an invalid address to force net.Listen to fail.
+	listenAddr = "999.999.999.999:0"
+
+	ctx := context.Background()
+	logger := log.New(log.Writer(), "test: ", 0)
+	_, err := runBrowserAuth(ctx, "http://127.0.0.1:1", logger)
+	if err == nil {
+		t.Fatal("expected listen error")
+	}
+	if !strings.Contains(err.Error(), "listen") {
+		t.Fatalf("expected listen error, got: %v", err)
+	}
+}
+
+func TestRunBrowserAuth_InternalTimeout(t *testing.T) {
+	// Exercise the authTimeout path where the internal timeout fires
+	// while the parent context is still alive.
+	openBrowserFunc = func(string) error { return nil }
+	t.Cleanup(func() { openBrowserFunc = openBrowser })
+
+	origTimeout := authTimeout
+	authTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { authTimeout = origTimeout })
+
+	// Parent context lives much longer than authTimeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	logger := log.New(log.Writer(), "test: ", 0)
+	_, err := runBrowserAuth(ctx, "http://127.0.0.1:1", logger)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !strings.Contains(err.Error(), "authentication timed out") {
+		t.Fatalf("expected 'authentication timed out' error, got: %v", err)
+	}
+}
+
 func TestRunBrowserAuth_ContextCancelled(t *testing.T) {
 	// Stub openBrowserFunc so tests don't launch real browser windows.
 	openBrowserFunc = func(string) error { return nil }
@@ -720,6 +762,37 @@ func TestOpenBrowserCommandSpec(t *testing.T) {
 				t.Fatalf("openBrowserCommandSpec = %q %v, want %q %v", name, args, tt.wantName, tt.wantArgs)
 			}
 		})
+	}
+}
+
+func TestOpenBrowser_StartError(t *testing.T) {
+	orig := newBrowserCommand
+	t.Cleanup(func() { newBrowserCommand = orig })
+
+	newBrowserCommand = func(name string, args ...string) browserCommand {
+		return &stubBrowserCommand{err: fmt.Errorf("exec: not found")}
+	}
+
+	err := openBrowser("http://example.com")
+	if err == nil {
+		t.Fatal("expected error from Start()")
+	}
+	if !strings.Contains(err.Error(), "exec: not found") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestOpenBrowser_UnsupportedPlatformViaVar(t *testing.T) {
+	origGOOS := runtimeGOOS
+	t.Cleanup(func() { runtimeGOOS = origGOOS })
+
+	runtimeGOOS = "plan9"
+	err := openBrowser("http://example.com")
+	if err == nil {
+		t.Fatal("expected unsupported platform error")
+	}
+	if !strings.Contains(err.Error(), "unsupported platform") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

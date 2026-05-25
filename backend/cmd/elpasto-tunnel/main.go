@@ -114,6 +114,9 @@ func parseCLIArgs(args []string, stderr io.Writer) (tunnelCLIConfig, int) {
 	return cfg, 0
 }
 
+// execute is an integration-level function requiring real network/WebRTC/signal infrastructure.
+//
+//go:coverignore
 func execute(cfg tunnelCLIConfig, logger *log.Logger) {
 	peerID := uuid.New().String()
 

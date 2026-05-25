@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"elpasto/backend/internal/tokens"
 )
 
 // CreateSession generates a new session with a random token.
@@ -26,7 +24,7 @@ func (s *Store) CreateSession() (Session, error) {
 
 	var token string
 	for attempts := 0; attempts < 8; attempts++ {
-		candidate, err := tokens.Generate()
+		candidate, err := s.generateToken()
 		if err != nil {
 			return Session{}, fmt.Errorf("generate token: %w", err)
 		}

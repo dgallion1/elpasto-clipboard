@@ -75,11 +75,7 @@ func (r *TunnelRegistry) Register(peerID, session, clientToken string) (*TunnelC
 
 	token := clientToken
 	if !isValidAccessToken(token) {
-		var err error
-		token, err = generateAccessToken()
-		if err != nil {
-			return nil, fmt.Errorf("tunnel registry: generate access token: %w", err)
-		}
+		token = generateAccessToken()
 	}
 
 	prefix := "/api/tunnel/" + peerID + "/" + token + "/"
@@ -303,12 +299,11 @@ func (tc *TunnelConn) closeAllPending() {
 }
 
 // generateAccessToken generates a cryptographically random URL-safe access token.
-func generateAccessToken() (string, error) {
+// crypto/rand.Read is guaranteed to succeed (Go 1.24+); entropy failure is process-fatal.
+func generateAccessToken() string {
 	b := make([]byte, 24)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(b), nil
+	rand.Read(b)
+	return base64.URLEncoding.EncodeToString(b)
 }
 
 // isValidAccessToken checks if a token is valid base64url and decodes to exactly 24 bytes.

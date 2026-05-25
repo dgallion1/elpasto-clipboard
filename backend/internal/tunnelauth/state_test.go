@@ -119,3 +119,11 @@ func TestValidateState_NegativePortAfterValidMAC(t *testing.T) {
 		t.Fatalf("expected invalid port error, got: %v", err)
 	}
 }
+
+func TestMintState_NegativePort(t *testing.T) {
+	_, err := MintState("secret", -1)
+	if err == nil || !strings.Contains(err.Error(), "invalid port") {
+		t.Fatalf("expected invalid port error, got: %v", err)
+	}
+}
+

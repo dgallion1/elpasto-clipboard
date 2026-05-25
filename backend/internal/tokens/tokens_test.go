@@ -1,6 +1,8 @@
 package tokens
 
 import (
+	"crypto/rand"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -110,5 +112,26 @@ func TestGenerateUniqueness(t *testing.T) {
 			t.Fatalf("duplicate token generated: %s", token)
 		}
 		seen[token] = true
+	}
+}
+
+// failReader is an io.Reader that always returns an error.
+type failReader struct{}
+
+func (failReader) Read([]byte) (int, error) {
+	return 0, errors.New("forced rand failure")
+}
+
+func TestGenerateRandFailure(t *testing.T) {
+	original := rand.Reader
+	t.Cleanup(func() { rand.Reader = original })
+
+	rand.Reader = failReader{}
+	_, err := Generate()
+	if err == nil {
+		t.Fatal("expected Generate to fail when rand.Reader errors")
+	}
+	if !strings.Contains(err.Error(), "forced rand failure") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"elpasto/backend/internal/tokens"
 )
 
 // Session is the external representation returned to callers.
@@ -36,6 +38,7 @@ type Store struct {
 	sessionsByID    map[int64]*sessionRecord
 	nextSessionID   atomic.Int64
 	now             func() time.Time
+	generateToken   func() (string, error)
 	expiryHours     int
 	maxSessions     int
 	dirty           atomic.Bool
@@ -47,6 +50,7 @@ func New(expiryHours int) *Store {
 		sessionsByToken: make(map[string]*sessionRecord),
 		sessionsByID:    make(map[int64]*sessionRecord),
 		now:             func() time.Time { return time.Now().UTC() },
+		generateToken:   tokens.Generate,
 		expiryHours:     expiryHours,
 		maxSessions:     DefaultMaxSessions,
 	}
