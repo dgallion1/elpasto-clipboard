@@ -29,8 +29,8 @@ Prerequisites:
 - Node.js 22+, npm, Go 1.26+, and `make` for local development without Docker.
 
 ```bash
-git clone https://github.com/your-org/elpasto.git
-cd elpasto
+git clone https://github.com/dgallion1/elpasto-clipboard.git
+cd elpasto-clipboard
 cp .env.example .env             # safe placeholders — no required edits to boot
 docker compose up -d --build
 open http://localhost:3000       # or http://your-host:3000
