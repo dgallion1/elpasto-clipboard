@@ -26,7 +26,7 @@ dev: ## Start Next.js dev + Go backend together
 	@make -j2 dev-frontend dev-backend
 
 dev-frontend:
-	npm run dev
+	NEXT_PUBLIC_GO_BACKEND_PORT=$(GO_BACKEND_PORT) npx next dev -p $(PORT)
 
 dev-backend:
 	mkdir -p $(GO_CACHE_DIR)

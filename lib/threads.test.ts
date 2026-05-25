@@ -206,6 +206,26 @@ describe("lib/threads", () => {
       expect(result.map((r) => r.position)).toEqual([0, 1]);
     });
 
+    test("renumbers duplicate fallback names after multi-peer merge", () => {
+      const records: ThreadRecord[] = [
+        makeThread({ id: "peer-a", name: "1", position: 0, updatedAt: 1000 }),
+        makeThread({ id: "peer-b", name: "1", position: 1, updatedAt: 1001 }),
+        makeThread({ id: "peer-c", name: "1", position: 2, updatedAt: 1002 }),
+      ];
+      const result = normalizeThreadRecords(records);
+      expect(result.map((r) => r.name)).toEqual(["1", "2", "3"]);
+    });
+
+    test("preserves custom (non-numeric) names during renumbering", () => {
+      const records: ThreadRecord[] = [
+        makeThread({ id: "a", name: "Links", position: 0, updatedAt: 1000 }),
+        makeThread({ id: "b", name: "1", position: 1, updatedAt: 1001 }),
+      ];
+      const result = normalizeThreadRecords(records);
+      expect(result.find((r) => r.id === "a")?.name).toBe("Links");
+      expect(result.find((r) => r.id === "b")?.name).toBe("2");
+    });
+
     test("prunes tombstones beyond MAX_THREAD_TOMBSTONES", () => {
       const records: ThreadRecord[] = [];
       for (let i = 0; i < MAX_THREAD_TOMBSTONES + 10; i++) {

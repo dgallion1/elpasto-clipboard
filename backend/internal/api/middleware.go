@@ -39,7 +39,8 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 			allowed[origin] = struct{}{}
 		}
 	}
-	if os.Getenv("NODE_ENV") != "production" {
+	devMode := os.Getenv("NODE_ENV") != "production"
+	if devMode {
 		allowed["http://localhost:3000"] = struct{}{}
 	}
 
@@ -52,6 +53,9 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 		origin := r.Header.Get("Origin")
 		headers := w.Header()
 		if _, ok := allowed[origin]; ok {
+			headers.Set("Access-Control-Allow-Origin", origin)
+			headers.Set("Vary", "Origin")
+		} else if devMode && strings.HasPrefix(origin, "http://localhost:") {
 			headers.Set("Access-Control-Allow-Origin", origin)
 			headers.Set("Vary", "Origin")
 		}

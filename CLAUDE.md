@@ -8,9 +8,10 @@
 - Go 1.26 backend under `backend/`
 
 ## Dev
-- `make dev` starts Next.js dev (:3000) + Go backend (:8080) together
+- `make dev` starts Next.js dev (:3000) + Go backend (:8080) together; override with `make dev PORT=3001`
 - Next.js rewrites `/api/*` to Go backend in dev (configured in `next.config.ts`)
-- SSE connects directly to Go backend in dev via `NEXT_PUBLIC_GO_BACKEND_PORT` to bypass Next.js proxy buffering
+- SSE connects directly to Go backend in dev via `NEXT_PUBLIC_GO_BACKEND_PORT` to bypass Next.js proxy buffering; the Makefile passes this automatically — no `.env` file needed for dev
+- CORS in dev mode allows any `http://localhost:*` origin so SSE works regardless of which port Next.js uses
 - `make build` builds frontend assets + Go binary for production
 - Type-check: `npx tsc --noEmit`
 - Lint: `npm run lint`

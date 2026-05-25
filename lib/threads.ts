@@ -61,7 +61,7 @@ export function normalizeThreadRecords(records: ThreadRecord[]): ThreadRecord[] 
       byId.set(normalized.id, normalized);
     }
   }
-  return pruneTombstones(normalizeActivePositions(Array.from(byId.values())));
+  return pruneTombstones(renumberFallbackNames(normalizeActivePositions(Array.from(byId.values()))));
 }
 
 export function mergeThreadRecords(
@@ -220,4 +220,18 @@ function pruneTombstones(records: ThreadRecord[]): ThreadRecord[] {
 
 function recordTimestamp(record: ThreadRecord): number {
   return Math.max(record.updatedAt, record.deletedAt ?? 0);
+}
+
+const FALLBACK_NAME_RE = /^\d+$/;
+
+function renumberFallbackNames(records: ThreadRecord[]): ThreadRecord[] {
+  let changed = false;
+  const result = records.map((record) => {
+    if (record.deletedAt != null || !FALLBACK_NAME_RE.test(record.name)) return record;
+    const expected = fallbackThreadName(record.position);
+    if (record.name === expected) return record;
+    changed = true;
+    return { ...record, name: expected };
+  });
+  return changed ? result : records;
 }
