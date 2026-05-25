@@ -144,6 +144,20 @@ disabled when their env vars are blank.
 - Before publishing a fork, run a secret scan over the current tree and the Git
   history if the repository has ever contained private deployment values.
 
+## Runtime data (`data/`)
+
+The `data/` directory (set by `DATA_DIR`, defaults to `./data` locally or `/data`
+in Docker) is created at runtime and contains:
+
+| Path | Contents |
+|------|----------|
+| `data/snapshot.json` | Session metadata (tokens, IDs, expiry times) serialized every 5 minutes and on shutdown. Restored automatically on startup so sessions survive restarts. Deleted after a successful restore. |
+| `data/uploads/` | Per-session blob storage directory. Reserved for the legacy server-side upload path; currently dormant because clip payloads travel peer-to-peer via WebRTC. |
+
+No clip content is ever written to `data/` — only lightweight session bookkeeping.
+The directory is gitignored; in Docker it is volume-mounted so snapshots persist
+across container recreates.
+
 ## Deployment
 
 The provided `docker-compose.yml` boots elpasto on a single host. To deploy to a
