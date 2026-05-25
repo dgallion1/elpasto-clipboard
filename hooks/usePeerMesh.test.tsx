@@ -1711,6 +1711,147 @@ describe("tombstone recording on incoming delete messages", () => {
     expect(offeredIds).toContain("live-clip");
   });
 
+  test("catalog offer includes in-memory sender clips absent from IDB", async () => {
+    randomUuidSpy.mockReturnValue("peer-local");
+    const sendPeerSignal = vi.fn(async () => true);
+
+    const { result } = renderHook(() =>
+      usePeerMesh({
+        enabled: true,
+        sessionToken: "session-1",
+        signalingReady: true,
+        sendPeerSignal,
+        getCurrentUnlockSecret: getCurrentUnlockSecretMock,
+      })
+    );
+
+    // Connect first peer via datachannel and queue a clip into localBinaryClipsRef
+    await act(async () => {
+      await result.current.handlePeerSignal({
+        fromPeerId: "peer-first",
+        signalType: "announce",
+      });
+    });
+    const firstChannel = new FakeDataChannel();
+    await act(async () => {
+      peerConnections[0].trigger("datachannel", {
+        channel: firstChannel as unknown as RTCDataChannel,
+      });
+      firstChannel.open();
+    });
+
+    const file = new File(["hello"], "clip.txt", { type: "text/plain" });
+    await act(async () => {
+      await result.current.queueLocalBinaryClip({
+        transferId: "memory-only-clip",
+        zone: "A",
+        file,
+        kind: "text",
+      });
+    });
+
+    // Simulate another tab adopting the IDB record: delete it from our mock store
+    storedBinaryClips.delete(clipStoreKey("peer-local", "memory-only-clip"));
+
+    // Connect a second peer — its catalog offer should still include the clip
+    await act(async () => {
+      await result.current.handlePeerSignal({
+        fromPeerId: "peer-second",
+        signalType: "announce",
+      });
+    });
+    const secondChannel = new FakeDataChannel();
+    await act(async () => {
+      peerConnections[1].trigger("datachannel", {
+        channel: secondChannel as unknown as RTCDataChannel,
+      });
+      secondChannel.open();
+    });
+
+    const offerMsg = secondChannel.sent.find((msg) => {
+      try {
+        return JSON.parse(msg as string).type === "catalog:offer";
+      } catch {
+        return false;
+      }
+    });
+    expect(offerMsg).toBeDefined();
+    const parsed = JSON.parse(offerMsg as string);
+    const offeredIds = parsed.clips.map((c: { transferId: string }) => c.transferId);
+    expect(offeredIds).toContain("memory-only-clip");
+  });
+
+  test("catalog offer deduplicates in-memory and IDB clips", async () => {
+    randomUuidSpy.mockReturnValue("peer-local");
+    const sendPeerSignal = vi.fn(async () => true);
+
+    const { result } = renderHook(() =>
+      usePeerMesh({
+        enabled: true,
+        sessionToken: "session-1",
+        signalingReady: true,
+        sendPeerSignal,
+        getCurrentUnlockSecret: getCurrentUnlockSecretMock,
+      })
+    );
+
+    // Connect first peer and queue a clip (present in both memory and IDB)
+    await act(async () => {
+      await result.current.handlePeerSignal({
+        fromPeerId: "peer-first",
+        signalType: "announce",
+      });
+    });
+    const firstChannel = new FakeDataChannel();
+    await act(async () => {
+      peerConnections[0].trigger("datachannel", {
+        channel: firstChannel as unknown as RTCDataChannel,
+      });
+      firstChannel.open();
+    });
+
+    const file = new File(["hello"], "clip.txt", { type: "text/plain" });
+    await act(async () => {
+      await result.current.queueLocalBinaryClip({
+        transferId: "dup-clip",
+        zone: "A",
+        file,
+        kind: "text",
+      });
+    });
+
+    // Verify the clip is in IDB (put by queueLocalBinaryClip)
+    expect(storedBinaryClips.has(clipStoreKey("peer-local", "dup-clip"))).toBe(true);
+
+    // Connect a second peer
+    await act(async () => {
+      await result.current.handlePeerSignal({
+        fromPeerId: "peer-second",
+        signalType: "announce",
+      });
+    });
+    const secondChannel = new FakeDataChannel();
+    await act(async () => {
+      peerConnections[1].trigger("datachannel", {
+        channel: secondChannel as unknown as RTCDataChannel,
+      });
+      secondChannel.open();
+    });
+
+    const offerMsg = secondChannel.sent.find((msg) => {
+      try {
+        return JSON.parse(msg as string).type === "catalog:offer";
+      } catch {
+        return false;
+      }
+    });
+    expect(offerMsg).toBeDefined();
+    const parsed = JSON.parse(offerMsg as string);
+    const offeredIds = parsed.clips.map((c: { transferId: string }) => c.transferId);
+    const dupCount = offeredIds.filter((id: string) => id === "dup-clip").length;
+    expect(dupCount).toBe(1);
+  });
+
   test("initial restore filters tombstoned clips from IndexedDB", async () => {
     randomUuidSpy.mockReturnValue("peer-local");
     // Seed a tombstoned sender clip and a live sender clip

@@ -767,7 +767,7 @@ export function usePeerMesh({
 
   const sendCatalogOfferToPeer = useCallback(async (peerId: string) => {
     await restoreReadyRef.current?.promise;
-    const [allClips, tombstones] = await Promise.all([
+    const [idbClips, tombstones] = await Promise.all([
       listStoredBinaryClipMetadataBySession(sessionToken, ownerTabId),
       getTombstones(sessionToken),
     ]);
@@ -776,6 +776,28 @@ export function usePeerMesh({
         .filter((thread) => thread.deletedAt != null)
         .map((thread) => thread.id)
     );
+
+    // Merge in-memory sender clips with IDB results so the catalog remains
+    // correct even if another tab adopted this tab's IDB records.
+    const seen = new Set(idbClips.map((clip) => clip.transferId));
+    const memoryOnly: BinaryClipCatalogEntry[] = [];
+    for (const [, entry] of localBinaryClipsRef.current) {
+      if (seen.has(entry.transferId)) continue;
+      memoryOnly.push({
+        transferId: entry.transferId,
+        zone: entry.clip.zone,
+        kind: entry.clip.kind,
+        mimeType: entry.clip.mime_type || "application/octet-stream",
+        originalName: entry.clip.original_name || "download",
+        sizeBytes: entry.clip.size_bytes || 0,
+        encryptionVersion: entry.clip.encryption_version ?? null,
+        encryptionMeta: entry.clip.encryption_meta ?? null,
+        createdAt: entry.clip.created_at,
+        note: entry.clip.note,
+      });
+    }
+
+    const allClips = [...idbClips, ...memoryOnly];
     const clips = allClips.filter((clip) => (
       !tombstones.has(clip.transferId) && !deletedThreadIds.has(clip.zone)
     ));
@@ -784,6 +806,7 @@ export function usePeerMesh({
       ownerTabId,
       sessionToken,
       clipCount: clips.length,
+      memoryOnlyCount: memoryOnly.length,
       filteredByTombstone: allClips.length - clips.length,
       transferIds: clips.map((clip) => clip.transferId),
     });
