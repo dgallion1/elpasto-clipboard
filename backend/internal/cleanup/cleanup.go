@@ -6,37 +6,22 @@ import (
 	"time"
 
 	"elpasto/backend/internal/store"
-	"elpasto/backend/internal/storage"
 )
 
 type Runner struct {
-	store   *store.Store
-	storage *storage.Store
-	logger  *log.Logger
+	store  *store.Store
+	logger *log.Logger
 }
 
-func New(s *store.Store, blobStore *storage.Store, logger *log.Logger) *Runner {
+func New(s *store.Store, logger *log.Logger) *Runner {
 	return &Runner{
-		store:   s,
-		storage: blobStore,
-		logger:  logger,
+		store:  s,
+		logger: logger,
 	}
 }
 
 func (r *Runner) Run() (int, error) {
-	expired, fileSets := r.store.DeleteExpired()
-
-	for _, fs := range fileSets {
-		for _, key := range fs.StorageKeys {
-			r.storage.DeleteFile(fs.SessionID, key)
-		}
-	}
-
-	// Also delete session directories for expired sessions (covers files with no clip record).
-	for _, session := range expired {
-		r.storage.DeleteSessionFiles(session.ID)
-	}
-
+	expired := r.store.DeleteExpired()
 	return len(expired), nil
 }
 

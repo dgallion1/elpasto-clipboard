@@ -307,7 +307,7 @@ func TestDeleteExpired(t *testing.T) {
 	// Expire s1 only.
 	s.SetSessionExpiry(s1.ID, now.Add(-time.Minute))
 
-	deleted, _ := s.DeleteExpired()
+	deleted := s.DeleteExpired()
 	if len(deleted) != 1 {
 		t.Fatalf("expected 1 deleted, got %d", len(deleted))
 	}

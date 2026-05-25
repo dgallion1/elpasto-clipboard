@@ -634,7 +634,7 @@ func TestRateLimiting(t *testing.T) {
 	}
 }
 
-func TestCleanupRemovesExpiredSessionsAndFiles(t *testing.T) {
+func TestCleanupRemovesExpiredSessions(t *testing.T) {
 	app, _ := newTestServer(t, nil)
 
 	session, err := app.store.CreateSession()
@@ -645,23 +645,12 @@ func TestCleanupRemovesExpiredSessionsAndFiles(t *testing.T) {
 	// Set expiry to the past so cleanup will remove it.
 	app.store.SetSessionExpiry(session.ID, time.Now().Add(-1*time.Minute))
 
-	sessionDir := filepath.Join(app.cfg.UploadsDir, fmt.Sprintf("%d", session.ID))
-	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
-		t.Fatalf("create session dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(sessionDir, "clip.bin"), []byte("ciphertext"), 0o600); err != nil {
-		t.Fatalf("write session file: %v", err)
-	}
-
 	removed, err := app.cleanup.Run()
 	if err != nil {
 		t.Fatalf("run cleanup: %v", err)
 	}
 	if removed != 1 {
 		t.Fatalf("expected cleanup to remove 1 session, got %d", removed)
-	}
-	if _, err := os.Stat(sessionDir); !os.IsNotExist(err) {
-		t.Fatalf("expected session directory to be removed, got err=%v", err)
 	}
 
 	got := app.store.GetSessionByToken(session.Token)
@@ -756,7 +745,6 @@ func TestSessionEventsValidation(t *testing.T) {
 func TestServerHelpersAndRoutesWithoutSockets(t *testing.T) {
 	app, err := New(config.Config{
 		DataDir:                   t.TempDir(),
-		UploadsDir:                filepath.Join(t.TempDir(), "uploads"),
 		SessionExpiryHours:        24,
 		MaxClipBytes:              1024,
 		MaxSessionBytes:           2048,
@@ -791,7 +779,6 @@ func TestServerHelpersAndRoutesWithoutSockets(t *testing.T) {
 	t.Run("stats route includes live connections", func(t *testing.T) {
 		statsApp, err := New(config.Config{
 			DataDir:                   t.TempDir(),
-			UploadsDir:                filepath.Join(t.TempDir(), "uploads"),
 			SessionExpiryHours:        24,
 			MaxClipBytes:              1024,
 			MaxSessionBytes:           2048,
@@ -887,7 +874,6 @@ func TestServerHelpersAndRoutesWithoutSockets(t *testing.T) {
 func TestAPIMiddlewareAndHelpers(t *testing.T) {
 	app, err := New(config.Config{
 		DataDir:                   t.TempDir(),
-		UploadsDir:                filepath.Join(t.TempDir(), "uploads"),
 		SessionExpiryHours:        24,
 		MaxClipBytes:              8,
 		MaxSessionBytes:           16,
@@ -1983,7 +1969,6 @@ func TestRoutesWithTunnelAuth(t *testing.T) {
 	// Test that routes registers tunnel auth endpoints when auth is configured.
 	app, err := New(config.Config{
 		DataDir:                     t.TempDir(),
-		UploadsDir:                  filepath.Join(t.TempDir(), "uploads"),
 		SessionExpiryHours:          24,
 		MaxClipBytes:                1024,
 		MaxSessionBytes:             2048,
@@ -2026,7 +2011,6 @@ func TestRoutesWithTunnelAuthAndBaseURL(t *testing.T) {
 	// Test routes with both tunnel auth and tunnel base URL for full route coverage.
 	app, err := New(config.Config{
 		DataDir:                     t.TempDir(),
-		UploadsDir:                  filepath.Join(t.TempDir(), "uploads"),
 		SessionExpiryHours:          24,
 		MaxClipBytes:                1024,
 		MaxSessionBytes:             2048,
@@ -2134,7 +2118,6 @@ func newTestServer(t *testing.T, mutate func(*config.Config)) (*Server, string) 
 	cfg := config.Config{
 		Port:                        0,
 		DataDir:                     dir,
-		UploadsDir:                  filepath.Join(dir, "uploads"),
 		SessionExpiryHours:          24,
 		MaxClipBytes:                10 * 1024 * 1024,
 		MaxSessionBytes:             100 * 1024 * 1024,
@@ -2652,7 +2635,6 @@ func TestNewServerNilLogger(t *testing.T) {
 	dir := t.TempDir()
 	cfg := config.Config{
 		DataDir:                dir,
-		UploadsDir:             filepath.Join(dir, "uploads"),
 		SessionExpiryHours:     24,
 		MaxClipBytes:           1024,
 		MaxSessionBytes:        2048,
@@ -2746,7 +2728,6 @@ func TestServerNewInvalidTunnelAuth(t *testing.T) {
 	dir := t.TempDir()
 	cfg := config.Config{
 		DataDir:                dir,
-		UploadsDir:             filepath.Join(dir, "uploads"),
 		SessionExpiryHours:     24,
 		MaxClipBytes:           1024,
 		MaxSessionBytes:        2048,
@@ -2766,7 +2747,6 @@ func TestServerNewInvalidTunnelBaseURL(t *testing.T) {
 	dir := t.TempDir()
 	cfg := config.Config{
 		DataDir:                dir,
-		UploadsDir:             filepath.Join(dir, "uploads"),
 		SessionExpiryHours:     24,
 		MaxClipBytes:           1024,
 		MaxSessionBytes:        2048,
@@ -2786,7 +2766,6 @@ func TestServerNewInvalidTunnelAuthHandler(t *testing.T) {
 	dir := t.TempDir()
 	cfg := config.Config{
 		DataDir:                 dir,
-		UploadsDir:              filepath.Join(dir, "uploads"),
 		SessionExpiryHours:      24,
 		MaxClipBytes:            1024,
 		MaxSessionBytes:         2048,
@@ -2912,7 +2891,6 @@ func TestServerNewWithNilLogger(t *testing.T) {
 	dir := t.TempDir()
 	cfg := config.Config{
 		DataDir:                dir,
-		UploadsDir:             filepath.Join(dir, "uploads"),
 		SessionExpiryHours:     24,
 		MaxClipBytes:           1024,
 		MaxSessionBytes:        2048,
@@ -3036,7 +3014,6 @@ func TestLogMiddleware(t *testing.T) {
 	var logBuf bytes.Buffer
 	app, err := New(config.Config{
 		DataDir:                t.TempDir(),
-		UploadsDir:             filepath.Join(t.TempDir(), "uploads"),
 		SessionExpiryHours:     24,
 		MaxClipBytes:           1024,
 		MaxSessionBytes:        2048,
@@ -3103,7 +3080,6 @@ func TestRoutesAuthValidatorClosure(t *testing.T) {
 	// returns 401 — but the authValidator closure body is executed.
 	app, err := New(config.Config{
 		DataDir:                   t.TempDir(),
-		UploadsDir:                filepath.Join(t.TempDir(), "uploads"),
 		SessionExpiryHours:        24,
 		MaxClipBytes:              1024,
 		MaxSessionBytes:           2048,
@@ -3150,7 +3126,6 @@ func TestTunnelVirtualHostPathRewrite(t *testing.T) {
 	// tunnel.* host so the path rewrite code (routes lines 207-209) runs.
 	app, err := New(config.Config{
 		DataDir:                   t.TempDir(),
-		UploadsDir:                filepath.Join(t.TempDir(), "uploads"),
 		SessionExpiryHours:        24,
 		MaxClipBytes:              1024,
 		MaxSessionBytes:           2048,

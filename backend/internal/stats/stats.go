@@ -30,7 +30,6 @@ type Collector struct {
 	sessionsCreated atomic.Int64
 	sessionViews    atomic.Int64
 	clipsCreated    atomic.Int64
-	fileUploads     atomic.Int64
 
 	seen         sync.Map // SHA-256(IP) → struct{}
 	counter      SessionCounter
@@ -51,7 +50,6 @@ type Snapshot struct {
 	SessionsCreated     int64                         `json:"sessions_created"`
 	SessionViews        int64                         `json:"session_views"`
 	ClipsCreated        int64                         `json:"clips_created"`
-	FileUploads         int64                         `json:"file_uploads"`
 	ActiveSessions      int `json:"active_sessions"`
 	SSEConnections      int `json:"sse_connections"`
 	ActiveTunnels       int `json:"active_tunnels"`
@@ -81,7 +79,6 @@ func (c *Collector) Snapshot() Snapshot {
 		SessionsCreated: c.sessionsCreated.Load(),
 		SessionViews:    c.sessionViews.Load(),
 		ClipsCreated:    c.clipsCreated.Load(),
-		FileUploads:     c.fileUploads.Load(),
 		ActiveSessions:  active,
 	}
 
@@ -131,13 +128,6 @@ func (c *Collector) RecordSessionView() {
 // exact clip count.
 func (c *Collector) RecordClipCreated() {
 	c.clipsCreated.Add(1)
-}
-
-// RecordFileUpload increments file_uploads. Reserved for the legacy server
-// upload path under internal/storage, which is currently dormant in the
-// peer-only flow. No production handler calls this today.
-func (c *Collector) RecordFileUpload() {
-	c.fileUploads.Add(1)
 }
 
 // ResetVisitorMap clears the dedup map. The unique_visitors counter keeps its value.

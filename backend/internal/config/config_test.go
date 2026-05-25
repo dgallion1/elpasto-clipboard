@@ -83,9 +83,6 @@ func TestFromEnv(t *testing.T) {
 	if cfg.DataDir != dir {
 		t.Fatalf("DataDir = %q", cfg.DataDir)
 	}
-	if cfg.UploadsDir != filepath.Join(dir, "uploads") {
-		t.Fatalf("UploadsDir = %q", cfg.UploadsDir)
-	}
 	if cfg.Port != 4321 || cfg.SessionExpiryHours != 12 || cfg.MaxClipBytes != 99 || cfg.MaxSessionBytes != 199 {
 		t.Fatalf("unexpected numeric config: %+v", cfg)
 	}

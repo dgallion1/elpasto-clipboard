@@ -24,7 +24,6 @@ type statsPromCollector struct {
 	sessionsCreated *prometheus.Desc
 	sessionViews    *prometheus.Desc
 	clipsCreated    *prometheus.Desc
-	fileUploads     *prometheus.Desc
 	activeSessions  *prometheus.Desc
 	sseConnections  *prometheus.Desc
 	activeTunnels   *prometheus.Desc
@@ -41,7 +40,6 @@ func newStatsPromCollector(src *stats.Collector) *statsPromCollector {
 		sessionsCreated: prometheus.NewDesc("elpasto_sessions_created_total", "Total sessions created since process start.", nil, nil),
 		sessionViews:    prometheus.NewDesc("elpasto_session_views_total", "Total session-page views since process start.", nil, nil),
 		clipsCreated:    prometheus.NewDesc("elpasto_clips_created_total", "Total SDP-offer signals seen (proxy for clip-share intents).", nil, nil),
-		fileUploads:     prometheus.NewDesc("elpasto_file_uploads_total", "Total legacy file uploads (currently dormant in peer-only flow).", nil, nil),
 		activeSessions:  prometheus.NewDesc("elpasto_active_sessions", "Current number of unexpired sessions.", nil, nil),
 		sseConnections:  prometheus.NewDesc("elpasto_sse_connections", "Current number of open Server-Sent Events connections.", nil, nil),
 		activeTunnels:   prometheus.NewDesc("elpasto_active_tunnels", "Current number of registered server-relay tunnels.", nil, nil),
@@ -57,7 +55,6 @@ func (c *statsPromCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.sessionsCreated
 	ch <- c.sessionViews
 	ch <- c.clipsCreated
-	ch <- c.fileUploads
 	ch <- c.activeSessions
 	ch <- c.sseConnections
 	ch <- c.activeTunnels
@@ -73,7 +70,6 @@ func (c *statsPromCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(c.sessionsCreated, prometheus.CounterValue, float64(snap.SessionsCreated))
 	ch <- prometheus.MustNewConstMetric(c.sessionViews, prometheus.CounterValue, float64(snap.SessionViews))
 	ch <- prometheus.MustNewConstMetric(c.clipsCreated, prometheus.CounterValue, float64(snap.ClipsCreated))
-	ch <- prometheus.MustNewConstMetric(c.fileUploads, prometheus.CounterValue, float64(snap.FileUploads))
 	ch <- prometheus.MustNewConstMetric(c.activeSessions, prometheus.GaugeValue, float64(snap.ActiveSessions))
 	ch <- prometheus.MustNewConstMetric(c.sseConnections, prometheus.GaugeValue, float64(snap.SSEConnections))
 	ch <- prometheus.MustNewConstMetric(c.activeTunnels, prometheus.GaugeValue, float64(snap.ActiveTunnels))

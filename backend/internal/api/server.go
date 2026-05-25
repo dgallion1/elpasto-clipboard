@@ -14,7 +14,6 @@ import (
 	"elpasto/backend/internal/frontend"
 	"elpasto/backend/internal/ratelimit"
 	"elpasto/backend/internal/stats"
-	"elpasto/backend/internal/storage"
 	"elpasto/backend/internal/store"
 	"elpasto/backend/internal/tunnel"
 	"elpasto/backend/internal/tunnelauth"
@@ -24,7 +23,6 @@ type Server struct {
 	cfg            config.Config
 	logger         *log.Logger
 	store          *store.Store
-	storage        *storage.Store
 	broker         *events.Broker
 	limiter        *ratelimit.Limiter
 	cleanup        *cleanup.Runner
@@ -59,7 +57,6 @@ func New(cfg config.Config, logger *log.Logger) (*Server, error) {
 		logger = log.Default()
 	}
 
-	blobStore := storage.New(cfg.UploadsDir)
 	metaStore := store.New(cfg.SessionExpiryHours)
 	broker := events.New()
 
@@ -75,7 +72,6 @@ func New(cfg config.Config, logger *log.Logger) (*Server, error) {
 		cfg:     cfg,
 		logger:  logger,
 		store:   metaStore,
-		storage: blobStore,
 		broker:  broker,
 		limiter: ratelimit.New(),
 	}
@@ -105,7 +101,7 @@ func New(cfg config.Config, logger *log.Logger) (*Server, error) {
 		logger.Printf("tunnel auth enabled (Google OAuth)")
 	}
 
-	server.cleanup = cleanup.New(metaStore, blobStore, logger)
+	server.cleanup = cleanup.New(metaStore, logger)
 	server.tunnelRegistry = tunnel.NewRegistry(5, 100, cfg.TunnelBaseURL)
 	server.stats = stats.New(server.store, &connectionReporter{
 		broker:   broker,

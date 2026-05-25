@@ -206,22 +206,15 @@ func (s *Store) SetSessionToken(sessionID int64, token string) bool {
 	return true
 }
 
-// DeletedSessionFiles pairs a session ID with the storage keys of its deleted clips.
-type DeletedSessionFiles struct {
-	SessionID   int64
-	StorageKeys []string
-}
-
-// DeleteExpired removes all expired sessions and their clips.
-// Returns the deleted sessions (snapshots) and the storage keys that should be cleaned up.
-func (s *Store) DeleteExpired() ([]Session, []DeletedSessionFiles) {
+// DeleteExpired removes all expired sessions.
+// Returns the deleted sessions (snapshots).
+func (s *Store) DeleteExpired() []Session {
 	now := s.now()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	var deleted []Session
-	var fileSets []DeletedSessionFiles
 
 	for token, rec := range s.sessionsByToken {
 		if !rec.expiresAt.After(now) {
@@ -234,7 +227,7 @@ func (s *Store) DeleteExpired() ([]Session, []DeletedSessionFiles) {
 		s.dirty.Store(true)
 	}
 
-	return deleted, fileSets
+	return deleted
 }
 
 // deleteSessionLocked removes a session. Caller must hold s.mu.

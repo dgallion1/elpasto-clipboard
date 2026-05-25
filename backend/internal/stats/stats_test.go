@@ -73,7 +73,6 @@ func TestDomainCounters(t *testing.T) {
 	c.RecordClipCreated()
 	c.RecordClipCreated()
 	c.RecordClipCreated()
-	c.RecordFileUpload()
 
 	snap := c.Snapshot()
 	if snap.SessionsCreated != 2 {
@@ -84,9 +83,6 @@ func TestDomainCounters(t *testing.T) {
 	}
 	if snap.ClipsCreated != 3 {
 		t.Errorf("clips_created: got %d, want 3", snap.ClipsCreated)
-	}
-	if snap.FileUploads != 1 {
-		t.Errorf("file_uploads: got %d, want 1", snap.FileUploads)
 	}
 }
 
@@ -239,17 +235,6 @@ func TestRecordRequestSameIPMultipleTimes(t *testing.T) {
 	}
 	if snap.APIRequests != 3 {
 		t.Errorf("APIRequests = %d, want 3", snap.APIRequests)
-	}
-}
-
-func TestRecordFileUpload(t *testing.T) {
-	c := New(nil, nil)
-	c.RecordFileUpload()
-	c.RecordFileUpload()
-	c.RecordFileUpload()
-	snap := c.Snapshot()
-	if snap.FileUploads != 3 {
-		t.Errorf("FileUploads = %d, want 3", snap.FileUploads)
 	}
 }
 

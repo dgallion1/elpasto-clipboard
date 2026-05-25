@@ -14,17 +14,11 @@ import (
 
 	"elpasto/backend/internal/api"
 	"elpasto/backend/internal/config"
-	"elpasto/backend/internal/storage"
 )
-
-type uploadStore interface {
-	SweepOrphanedUploads(activeSessionIDs []int64) (int, error)
-}
 
 type apiServer interface {
 	Close() error
 	Handler() http.Handler
-	ActiveSessionIDs() []int64
 	RestoreSnapshot(path string) (int, int, error)
 	SaveSnapshot(path string) error
 	StartCleanupLoop(ctx context.Context)
@@ -49,9 +43,6 @@ func (s *stdHTTPServer) Shutdown(ctx context.Context) error {
 }
 
 var (
-	newUploadStore = func(uploadsDir string) uploadStore {
-		return storage.New(uploadsDir)
-	}
 	newAPIServer = func(cfg config.Config, logger *log.Logger) (apiServer, error) {
 		return api.New(cfg, logger)
 	}
@@ -96,19 +87,6 @@ func run(ctx context.Context, cfg config.Config, logger *log.Logger) error {
 		logger.Printf("warning: failed to restore snapshot: %v", restoreErr)
 	} else if sessions > 0 {
 		logger.Printf("startup: restored %d sessions and %d clips from snapshot", sessions, clips)
-	}
-
-	blobStore := newUploadStore(cfg.UploadsDir)
-	if restoreErr == nil {
-		swept, err := blobStore.SweepOrphanedUploads(server.ActiveSessionIDs())
-		if err != nil {
-			return fmt.Errorf("startup upload sweep failed: %w", err)
-		}
-		if swept > 0 {
-			logger.Printf("startup: removed %d orphaned upload directories", swept)
-		}
-	} else {
-		logger.Printf("warning: skipped startup upload sweep because snapshot restore failed")
 	}
 
 	server.StartCleanupLoop(ctx)

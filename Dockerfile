@@ -50,7 +50,7 @@ ENV DATA_DIR=/data
 
 RUN addgroup --system --gid 1001 elpasto && \
     adduser --system --uid 1001 --ingroup elpasto elpasto && \
-    mkdir -p /data/uploads && chown -R elpasto:elpasto /data
+    mkdir -p /data && chown elpasto:elpasto /data
 
 COPY --from=builder /out/elpasto /usr/local/bin/elpasto
 COPY --from=builder /out/downloads /downloads

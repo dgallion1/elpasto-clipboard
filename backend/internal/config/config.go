@@ -12,7 +12,6 @@ import (
 type Config struct {
 	Port                        int
 	DataDir                     string
-	UploadsDir                  string
 	DownloadsDir                string
 	SessionExpiryHours          int
 	MaxClipBytes                int64
@@ -51,7 +50,6 @@ func FromEnv() Config {
 	return Config{
 		Port:                        getenvInt("PORT", 3000),
 		DataDir:                     dataDir,
-		UploadsDir:                  filepath.Join(dataDir, "uploads"),
 		DownloadsDir:                getenv("DOWNLOADS_DIR", filepath.Join(wd, "downloads")),
 		SessionExpiryHours:          getenvInt("SESSION_EXPIRY_HOURS", 24),
 		MaxClipBytes:                int64(getenvInt("MAX_CLIP_BYTES", 512*1024)),
