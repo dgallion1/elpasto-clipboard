@@ -1,0 +1,69 @@
+services:
+  elpasto:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_CF_ANALYTICS_TOKEN: ${NEXT_PUBLIC_CF_ANALYTICS_TOKEN:-}
+        NEXT_PUBLIC_PLAUSIBLE_ENABLED: ${NEXT_PUBLIC_PLAUSIBLE_ENABLED:-}
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - elpasto-data:/data
+    environment:
+      - PORT=3000
+      - DATA_DIR=/data
+      - DOWNLOADS_DIR=${DOWNLOADS_DIR:-/downloads}
+      - NODE_ENV=${NODE_ENV:-production}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
+      - SESSION_EXPIRY_HOURS=${SESSION_EXPIRY_HOURS:-24}
+      - MAX_CLIP_BYTES=${MAX_CLIP_BYTES:-10485760}
+      - MAX_SESSION_BYTES=${MAX_SESSION_BYTES:-104857600}
+      - MAX_CLIPS_PER_ZONE=${MAX_CLIPS_PER_ZONE:-100}
+      - CLEANUP_INTERVAL_MS=${CLEANUP_INTERVAL_MS:-}
+      - RATE_LIMIT_CREATE_PER_HOUR=${RATE_LIMIT_CREATE_PER_HOUR:-20}
+      - RATE_LIMIT_BATCH_CREATE_PER_HOUR=${RATE_LIMIT_BATCH_CREATE_PER_HOUR:-60}
+      - RATE_LIMIT_LOOKUPS_PER_MINUTE=${RATE_LIMIT_LOOKUPS_PER_MINUTE:-10}
+      - RATE_LIMIT_SIGNALS_PER_MINUTE=${RATE_LIMIT_SIGNALS_PER_MINUTE:-240}
+      - RATE_LIMIT_UPLOADS_PER_MINUTE=${RATE_LIMIT_UPLOADS_PER_MINUTE:-30}
+      - RATE_LIMIT_TUNNEL_AUTH_STARTS_PER_HOUR=${RATE_LIMIT_TUNNEL_AUTH_STARTS_PER_HOUR:-10}
+      - RATE_LIMIT_TUNNEL_AUTH_CALLBACKS_PER_HOUR=${RATE_LIMIT_TUNNEL_AUTH_CALLBACKS_PER_HOUR:-30}
+      - TURN_SECRET=${TURN_SECRET:-}
+      - TURN_SERVER=${TURN_SERVER:-}
+      - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-}
+      - ENABLE_BATCH_SESSION_CREATE=${ENABLE_BATCH_SESSION_CREATE:-}
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-}
+      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      - TUNNEL_AUTH_SECRET=${TUNNEL_AUTH_SECRET:-}
+      - TUNNEL_AUTH_ALLOWED_EMAILS=${TUNNEL_AUTH_ALLOWED_EMAILS:-}
+      - TUNNEL_AUTH_ALLOWED_DOMAINS=${TUNNEL_AUTH_ALLOWED_DOMAINS:-}
+      - TUNNEL_BASE_URL=${TUNNEL_BASE_URL:-}
+      - STATS_DASHBOARD_KEY=${STATS_DASHBOARD_KEY:-}
+      - PLAUSIBLE_SCRIPT_URL=${PLAUSIBLE_SCRIPT_URL:-}
+      - PLAUSIBLE_EVENT_URL=${PLAUSIBLE_EVENT_URL:-}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+
+  coturn:
+    profiles:
+      - turn
+    image: coturn/coturn:latest
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./infra/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command:
+      - --static-auth-secret=${TURN_SECRET:-}
+      - --realm=${TURN_REALM:-localhost}
+      - --external-ip=${TURN_EXTERNAL_IP:-}
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
+
+volumes:
+  elpasto-data:

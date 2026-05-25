@@ -1,0 +1,16 @@
+services:
+  coturn:
+    image: coturn/coturn:latest
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command:
+      - --static-auth-secret=${TURN_SECRET}
+      - --realm=${TURN_REALM:-localhost}
+      - --external-ip=${TURN_EXTERNAL_IP:-}
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M

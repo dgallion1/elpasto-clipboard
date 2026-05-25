@@ -1,0 +1,48 @@
+# Source control + local config
+.git
+.gitignore
+.env
+.env.local
+.env.development
+.env.production
+.env.*.local
+deploy.local.mk
+*.local.mk
+
+# Node / Next
+node_modules
+.next
+.cache
+
+# Build artifacts
+coverage
+coverage.out
+backend/coverage.out
+backend/elpasto-tunnel
+backend/downloads
+*.tsbuildinfo
+
+# Runtime data
+data
+
+# Worktrees / scratch
+.worktrees
+.agent
+.agents
+.claude
+.superpowers
+
+# Docs we don't need in the image (keep README.md + LICENSE + SECURITY.md)
+docs/local-archive
+docs/superpowers
+*.md
+!README.md
+!LICENSE
+!SECURITY.md
+
+# OS junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.log

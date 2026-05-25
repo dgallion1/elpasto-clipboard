@@ -1,0 +1,54 @@
+# --- Local env (track only .env.example) ---
+.env
+.env.local
+.env.development
+.env.production
+.env.*.local
+
+# --- Local deploy config ---
+deploy.local.mk
+*.local.mk
+!*.local.mk.example
+
+# --- Node / Next ---
+node_modules/
+.next/
+.cache/
+next-env.d.ts
+*.tsbuildinfo
+
+# --- Go build artifacts ---
+backend/elpasto
+backend/elpasto-tunnel
+coverage.out
+coverage/
+backend/coverage*.out
+backend/*_cov.out
+
+# --- Runtime / generated data ---
+data/
+backend/downloads/
+backend/internal/frontend/dist/*
+!backend/internal/frontend/dist/.gitkeep
+
+# --- Agent / IDE scratch ---
+.agent/
+.agents/
+.claude/
+.superpowers/
+.worktrees/
+.vscode/
+.idea/
+
+# --- Private archive (audit, design docs not for public) ---
+docs/local-archive/
+
+# --- Misc ---
+concept/
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo

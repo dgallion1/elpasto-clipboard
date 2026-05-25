@@ -1,0 +1,46 @@
+# deploy.local.mk.example — copy to deploy.local.mk and edit.
+# The real file is gitignored, so personal hostnames and paths stay private.
+#
+#   cp deploy.local.mk.example deploy.local.mk
+#   $EDITOR deploy.local.mk
+#   make docker-deploy
+#
+# Available variables (any set here override the Makefile defaults):
+
+# Hostname or IP of the deploy target.
+DEPLOY_HOST = your.host.example
+
+# Remote path to rsync sources into.
+DEPLOY_PATH = ~/elpasto
+
+# SSH command. Use 'tailscale ssh' if the host is on Tailscale.
+# SSH = tailscale ssh
+SSH = ssh
+
+# Rsync binary (override if you need a custom path).
+# RSYNC = rsync
+
+# Docker host port to bind. Container always listens on 3000.
+# DOCKER_PORT = 3001
+
+# Any variable listed in $(DEPLOY_VARS) in the Makefile (every env var
+# docker-compose.yml references) can be set here and will be forwarded via
+# SSH on deploy. Rsync excludes .env, so this is the canonical place for
+# deployment configuration.
+#
+# TURN (WebRTC fallback):
+#   TURN_SECRET = $(openssl rand -hex 32)
+#   TURN_SERVER = turn:turn.example.com:3478
+# Only needed for the bundled coturn (docker-deploy-turn):
+#   TURN_REALM = your-turn-domain.example
+#   TURN_EXTERNAL_IP = 1.2.3.4
+#
+# Other examples (see docker-compose.yml for the full list):
+#   STATS_DASHBOARD_KEY = your-dashboard-key
+#   GOOGLE_OAUTH_CLIENT_ID = ...apps.googleusercontent.com
+#   GOOGLE_OAUTH_CLIENT_SECRET = ...
+#   TUNNEL_AUTH_ALLOWED_EMAILS = you@example.com,teammate@example.com
+#   RATE_LIMIT_CREATE_PER_HOUR = 40
+#
+# Caveat: values containing $, `, ", or \ should be avoided — only "'" is
+# escaped automatically. Stick to alphanumerics and common punctuation.
