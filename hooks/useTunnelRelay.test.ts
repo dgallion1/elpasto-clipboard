@@ -34,18 +34,6 @@ class FakeBroadcastChannel {
   }
 }
 
-// ── Fake ServiceWorker registration ────────────────────────────────────────────
-
-function makeFakeServiceWorkerContainer() {
-  let activeWorker: { state: string; addEventListener: ReturnType<typeof vi.fn> } | null = null;
-  const registerMock = vi.fn(async () => ({
-    active: activeWorker,
-    installing: null,
-    waiting: null,
-  }));
-  return { registerMock, setActive: (w: typeof activeWorker) => { activeWorker = w; } };
-}
-
 // ── Globals ────────────────────────────────────────────────────────────────────
 
 const fetchMock = vi.fn();

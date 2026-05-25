@@ -3547,7 +3547,6 @@ describe("tombstone recording on incoming delete messages", () => {
     // setLocalDescription succeeds but localDescription stays null
     pc.setLocalDescription = async () => { pc.localDescription = null; };
 
-    const signalCallsBefore = sendPeerSignal.mock.calls.length;
     await act(async () => {
       pc.trigger("negotiationneeded");
       await Promise.resolve();
@@ -3986,9 +3985,6 @@ describe("tombstone recording on incoming delete messages", () => {
     const channel = pc.createdChannels[0];
     await act(async () => { channel.open(); });
 
-    const announceCallsBefore = sendPeerSignal.mock.calls.filter(
-      (c: unknown[]) => (c[0] as Record<string, string>).signalType === "announce"
-    ).length;
 
     // Close channel — should schedule reannounce
     await act(async () => {
@@ -6312,7 +6308,7 @@ describe("tombstone recording on incoming delete messages", () => {
     randomUuidSpy.mockReturnValue("peer-z");
     const sendPeerSignal = vi.fn(async () => true);
 
-    const { result, rerender } = renderHook(
+    const { rerender } = renderHook(
       ({ signalingReady }) =>
         usePeerMesh({
           enabled: true,

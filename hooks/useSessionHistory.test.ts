@@ -420,9 +420,6 @@ describe("parseSessionImportJson", () => {
     // we'll build a JSON that parseSessionImportJson can validate.
     // A valid token must pass isValidToken which requires 5 valid words.
     // We test with a round-trip from buildSessionExportJson instead.
-    const entries: SessionEntry[] = [
-      { token: "tok-a", pinned: true, lastVisited: 1000, label: "Session A" },
-    ];
     // We'll test parsing directly with a hand-crafted valid structure
     // but since token validation requires real words, use round-trip approach below
     expect(parseSessionImportJson("{}")).toBeNull();

@@ -242,7 +242,7 @@ class FakeDatabase {
     contains: (name: string) => this.stores.has(name),
   };
 
-  transaction(name: string, mode: IDBTransactionMode) {
+  transaction(_name: string, mode: IDBTransactionMode) {
     return new FakeTransaction(this, mode);
   }
 

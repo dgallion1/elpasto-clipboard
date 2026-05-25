@@ -42,12 +42,7 @@ import {
   applyThreadsSync,
   pickActiveAfterRemoteDelete,
 } from "./peer-thread-sync";
-import {
-  createThread,
-  deleteThread,
-  moveThread,
-  renameThread,
-} from "./thread-reducers";
+import { createThreadActions } from "./thread-actions";
 import { useSecretController } from "./useSecretController";
 import { useSessionLoader } from "./useSessionLoader";
 
@@ -528,84 +523,46 @@ export function useSessionPageController() {
     clearReceivedBinaryClips,
   ]);
 
-  const handleCreateThread = useCallback(() => {
-    const now = Date.now();
-    const result = createThread(threadRecords, now);
-    if (!result) return;
-    const threadId = result.thread.id;
-    setThreadRecords((prev) => {
-      const inner = createThread(prev, now, () => threadId);
-      return inner ? ensureAtLeastOneThread(inner.records) : prev;
-    });
-    setTimeout(() => {
-      const thread = activeThreads(getThreadRecords()).find(
-        (current) => current.id === threadId,
-      );
-      if (!thread) return;
-      setActiveThreadId(thread.id);
-      broadcastThreadCreated(thread);
-    }, 0);
-  }, [broadcastThreadCreated, getThreadRecords, threadRecords]);
-
-  const handleRenameThread = useCallback(
-    (id: ClipZone, name: string) => {
-      const now = Date.now();
-      const { name: nextName } = renameThread(threadRecords, id, name, now);
-      setThreadRecords((prev) => renameThread(prev, id, name, now).records);
-      broadcastThreadRenamed(id, nextName, now);
-    },
-    [broadcastThreadRenamed, threadRecords],
-  );
-
-  const handleDeleteThread = useCallback(
-    (id: ClipZone) => {
-      const now = Date.now();
-      const result = deleteThread(threadRecords, id, now);
-      if (!result) return;
-      setThreadRecords((prev) => {
-        const inner = deleteThread(prev, id, now);
-        return inner ? inner.records : prev;
-      });
-      setCanonicalClipsByZone((prev) => clearClipGroup(prev, id));
-      clearLocalBinaryClips(id);
-      clearReceivedBinaryClips(id);
-      setActiveThreadId(result.nextActiveId);
-      broadcastThreadDeleted(id, now);
-    },
+  const makeThreadActions = useCallback(
+    () =>
+      createThreadActions({
+        getRecords: getThreadRecords,
+        setRecords: setThreadRecords,
+        setActiveThreadId,
+        setCanonicalClipsByZone,
+        clearLocalBinaryClips,
+        clearReceivedBinaryClips,
+        broadcastThreadCreated,
+        broadcastThreadRenamed,
+        broadcastThreadDeleted,
+        broadcastThreadReordered,
+      }),
     [
+      broadcastThreadCreated,
       broadcastThreadDeleted,
+      broadcastThreadRenamed,
+      broadcastThreadReordered,
       clearLocalBinaryClips,
       clearReceivedBinaryClips,
-      threadRecords,
+      getThreadRecords,
     ],
   );
 
-  const handleMoveThread = useCallback(
-    (id: ClipZone, direction: -1 | 1) => {
-      const now = Date.now();
-      if (!moveThread(threadRecords, id, direction, now)) return;
-      const beforeIndex = activeThreads(threadRecords).findIndex(
-        (thread) => thread.id === id,
-      );
-      setThreadRecords((prev) => {
-        const inner = moveThread(prev, id, direction, now);
-        return inner ? inner.records : prev;
-      });
-      setTimeout(() => {
-        const current = activeThreads(getThreadRecords());
-        const afterIndex = current.findIndex((thread) => thread.id === id);
-        if (afterIndex < 0 || afterIndex === beforeIndex) return;
-        broadcastThreadReordered(
-          current.map((thread, position) => ({
-            id: thread.id,
-            position,
-            updatedAt: thread.updatedAt,
-          })),
-        );
-      }, 0);
-    },
-    [broadcastThreadReordered, getThreadRecords, threadRecords],
-  );
+  const handleCreateThread = useCallback(() => {
+    makeThreadActions().onCreateThread();
+  }, [makeThreadActions]);
+
+  const handleRenameThread = useCallback((id: ClipZone, name: string) => {
+    makeThreadActions().onRenameThread(id, name);
+  }, [makeThreadActions]);
+
+  const handleDeleteThread = useCallback((id: ClipZone) => {
+    makeThreadActions().onDeleteThread(id);
+  }, [makeThreadActions]);
+
+  const handleMoveThread = useCallback((id: ClipZone, direction: -1 | 1) => {
+    makeThreadActions().onMoveThread(id, direction);
+  }, [makeThreadActions]);
 
   return {
     loading,

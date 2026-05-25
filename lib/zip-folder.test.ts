@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { zipFolder } from "./zip-folder";
-import { unzipSync, strToU8 } from "fflate";
+import { unzipSync } from "fflate";
 
 // Helpers to build fake FileSystem entries
 

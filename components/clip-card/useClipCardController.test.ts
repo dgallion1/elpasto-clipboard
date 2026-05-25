@@ -559,17 +559,7 @@ describe("useClipCardController", () => {
   });
 
   test("decryptBinaryClip throws when not encrypted and missing metadata", async () => {
-    // encrypted=false, no encryption_meta, no localFile → error
-    const clip = buildClip({
-      kind: "file",
-      mime_type: "application/pdf",
-      encrypted: false,
-      encryption_meta: null,
-      storage_key: "some-key",
-    });
-    // handleDownload for an encrypted clip exercises decryptBinaryClip
-    // But here encrypted=false so the decryptBinaryClip path won't be taken in download
-    // Instead test via the mount effect with encrypted=true but missing encryption_meta
+    // The mount effect exercises decryptBinaryClip with encrypted=true but missing metadata.
     const clipMissingMeta = buildClip({
       kind: "file",
       mime_type: "application/pdf",
@@ -1438,22 +1428,8 @@ describe("useClipCardController", () => {
 
   test("loadTextContent returns empty string for null directCiphertext via getUnencryptedDirectBlob", async () => {
     // encrypted=false, directCiphertext exists but getUnencryptedDirectBlob returns null
-    // This tests the blob ? blob.text() : "" branch
-    // Actually getUnencryptedDirectBlob returns null when encrypted=true or directCiphertext=null
-    // For this test we need directCiphertext non-null + encrypted=false → returns blob
-    // To hit the empty string fallback, we'd need getUnencryptedDirectBlob to return null
-    // That happens when clip.encrypted=true
-    const clip = buildClip({
-      kind: "text",
-      text_content: null,
-      encrypted: true,
-      encryption_meta: buildEncryptedMeta("text"),
-    });
-    // encrypted=true with directCiphertext → takes the encrypted branch, not the directCiphertext branch
-    // We need to test the !encrypted directCiphertext path where blob is null
-    // getUnencryptedDirectBlob returns null when encrypted || !directCiphertext
-    // So the only way blob is null in that path is... not reachable since we check directCiphertext before calling
-    // Let's just test the fallback to clip.text_content
+    // The null direct-blob branch is unreachable after the directCiphertext guard,
+    // so this covers the fallback to clip.text_content.
     const clipFallback = buildClip({
       kind: "text",
       text_content: "fallback",

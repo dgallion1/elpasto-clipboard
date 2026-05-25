@@ -193,6 +193,17 @@ sequenceDiagram
 - DNS: point `turn.your-domain.example` at your public IP (DNS-only, not proxied)
 - Router forwards UDP+TCP 3478 and UDP 49152-49200 to the host running coturn
 
+## Frontend State Boundaries
+
+The session page is split into a composition controller and small domain modules:
+
+- `app/[token]/useSessionPageController.ts` wires API loading, SSE, WebRTC, local storage, and view props.
+- `app/[token]/thread-reducers.ts` contains pure thread create/rename/delete/move reducers.
+- `app/[token]/thread-actions.ts` wraps locally initiated thread CRUD with React state updates and peer broadcasts.
+- `app/[token]/peer-thread-sync.ts` applies thread changes received from remote peers.
+
+This keeps user-initiated side effects separate from remote sync and from pure state transitions.
+
 ## Data Flow Summary
 
 ```

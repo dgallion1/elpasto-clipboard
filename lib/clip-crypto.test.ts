@@ -99,7 +99,6 @@ describe("clip-crypto", () => {
     const encrypted = await encryptTextPayload(secret, "hello");
 
     // Now replace subtle.decrypt to throw a non-DOMException error
-    const originalDecrypt = globalThis.crypto.subtle.decrypt.bind(globalThis.crypto.subtle);
     vi.spyOn(globalThis.crypto.subtle, "decrypt").mockRejectedValue(
       new TypeError("some unexpected error")
     );

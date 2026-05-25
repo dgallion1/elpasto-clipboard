@@ -11,7 +11,6 @@ import {
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import type { SessionEntry } from "@/hooks/useSessionHistory";
-import type { ImportSessionsResult } from "@/components/paste-zone/types";
 
 // --- Mocks ----------------------------------------------------------------
 let capturedSessionHeaderProps: Record<string, unknown> | undefined;

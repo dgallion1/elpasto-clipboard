@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { cleanup, createEvent, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { createRef } from "react";
 import { PasteZoneContent } from "./PasteZoneContent";

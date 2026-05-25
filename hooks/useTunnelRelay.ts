@@ -5,7 +5,6 @@ import { buildApiUrl } from "@/lib/api";
 import {
   TUNNEL_BC_NAME,
   parseTunnelMessage,
-  type SwFetchRequest,
   type SwFetchResponse,
   type SwFetchError,
   type SwMessage,

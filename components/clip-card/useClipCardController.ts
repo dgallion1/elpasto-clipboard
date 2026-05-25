@@ -9,9 +9,6 @@ import {
 } from "react";
 import {
   ClipCryptoError,
-  decryptBinaryPayload,
-  decryptHtmlPayload,
-  decryptTextPayload,
   decryptTextWithHandle,
   decryptHtmlWithHandle,
   decryptBinaryWithHandle,
@@ -19,7 +16,6 @@ import {
 } from "@/lib/clip-crypto";
 import type { SecretHandle } from "@/lib/clip-crypto";
 import type { ClipEncryptionMeta } from "@/lib/clip-encryption";
-import type { ClipEncryptionMetaV1 } from "@/lib/clip-encryption";
 import { buildApiUrl } from "@/lib/api";
 import {
   copyHtml,
