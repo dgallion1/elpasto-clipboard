@@ -19,7 +19,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 if [ ! -d "$ROOT_DIR/.next/static" ]; then
-  echo "missing .next/static; run npm run build first" >&2
+  echo "missing .next/static; run pnpm run build first" >&2
   exit 1
 fi
 
@@ -34,7 +34,7 @@ if [ -d "$ROOT_DIR/public" ]; then
 fi
 
 : >"$LOG_FILE"
-(cd "$ROOT_DIR" && npx next start -H "$HOST" -p "$PORT" >"$LOG_FILE" 2>&1) &
+(cd "$ROOT_DIR" && pnpm next start -H "$HOST" -p "$PORT" >"$LOG_FILE" 2>&1) &
 SERVER_PID=$!
 
 attempt=0

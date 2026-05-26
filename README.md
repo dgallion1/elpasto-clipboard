@@ -26,7 +26,7 @@ clipboard content.
 Prerequisites:
 
 - Docker + Docker Compose for the container path.
-- Node.js 22+, npm, Go 1.26+, and `make` for local development without Docker.
+- Node.js 22+, pnpm, Go 1.26+, and `make` for local development without Docker.
 
 ```bash
 git clone https://github.com/dgallion1/elpasto-clipboard.git
@@ -40,14 +40,14 @@ That gets you a working local instance. To run elpasto in development without
 Docker:
 
 ```bash
-npm install
+pnpm install
 make dev                         # Next.js dev (:3000) + Go backend (:8080)
 ```
 
 If `make` is not available, run the two processes separately:
 
 ```bash
-npm run dev
+pnpm run dev
 cd backend && PORT=8080 go run ./cmd/elpasto
 ```
 

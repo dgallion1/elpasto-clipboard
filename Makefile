@@ -20,20 +20,20 @@ help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
 install: ## Install dependencies
-	npm ci
+	pnpm install --frozen-lockfile
 
 dev: ## Start Next.js dev + Go backend together
 	@make -j2 dev-frontend dev-backend
 
 dev-frontend:
-	NEXT_PUBLIC_GO_BACKEND_PORT=$(GO_BACKEND_PORT) npx next dev -p $(PORT)
+	NEXT_PUBLIC_GO_BACKEND_PORT=$(GO_BACKEND_PORT) pnpm next dev -p $(PORT)
 
 dev-backend:
 	mkdir -p $(GO_CACHE_DIR)
 	cd backend && GOCACHE=$(GO_CACHE_DIR) PORT=$(GO_BACKEND_PORT) go run ./cmd/elpasto
 
 build-frontend: ## Build Next.js and package embedded frontend assets
-	npm run build
+	pnpm run build
 	sh scripts/build-frontend.sh
 
 build-backend: ## Build Go backend binary
@@ -46,16 +46,16 @@ start: build-backend ## Start production Go binary
 	cd backend && PORT=$(PORT) ./elpasto
 
 check: ## Run type-check, lint, tests, and full Go quality pipeline
-	npx tsc --noEmit
-	npm run lint
-	npx vitest run
+	pnpm tsc --noEmit
+	pnpm run lint
+	pnpm vitest run
 	@$(MAKE) go-check
 
 lint: ## Run linter
-	npm run lint
+	pnpm run lint
 
 test: ## Run tests
-	npx vitest run
+	pnpm vitest run
 
 go-backend-run: ## Start Go backend on port $(GO_BACKEND_PORT)
 	mkdir -p $(GO_CACHE_DIR)
@@ -141,7 +141,7 @@ clean: ## Remove build artifacts
 
 reset: clean ## Clean and reinstall
 	rm -rf node_modules
-	npm ci
+	pnpm install --frozen-lockfile
 
 docker: ## Build Docker image
 	docker compose build

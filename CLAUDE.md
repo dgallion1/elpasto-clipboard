@@ -13,9 +13,9 @@
 - SSE connects directly to Go backend in dev via `NEXT_PUBLIC_GO_BACKEND_PORT` to bypass Next.js proxy buffering; the Makefile passes this automatically — no `.env` file needed for dev
 - CORS in dev mode allows any `http://localhost:*` origin so SSE works regardless of which port Next.js uses
 - `make build` builds frontend assets + Go binary for production
-- Type-check: `npx tsc --noEmit`
-- Lint: `npm run lint`
-- Test: `npm test` or `npx vitest run`; frontend tests use `@testing-library/react` with jsdom
+- Type-check: `pnpm tsc --noEmit`
+- Lint: `pnpm run lint`
+- Test: `pnpm test` or `pnpm vitest run`; frontend tests use `@testing-library/react` with jsdom
 - Go tests: `cd backend && go test ./...` or `make go-backend-test`
 - Go quality: `make go-check` (vet → staticcheck → govulncheck → test → race)
 - Go coverage: `cd backend && go test ./... -coverpkg=./... -coverprofile=coverage.out && go tool cover -func=coverage.out`

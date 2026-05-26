@@ -1,9 +1,9 @@
 FROM node:22-alpine AS frontend
 
 WORKDIR /app
-RUN apk add --no-cache curl
-COPY package.json package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci
+RUN apk add --no-cache curl && corepack enable && corepack prepare pnpm@latest --activate
+COPY package.json pnpm-lock.yaml ./
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
 COPY next.config.ts tsconfig.json postcss.config.mjs ./
 COPY app/ app/
 COPY components/ components/
@@ -16,7 +16,7 @@ ARG NEXT_PUBLIC_CF_ANALYTICS_TOKEN=""
 ENV NEXT_PUBLIC_CF_ANALYTICS_TOKEN=$NEXT_PUBLIC_CF_ANALYTICS_TOKEN
 ARG NEXT_PUBLIC_PLAUSIBLE_ENABLED=""
 ENV NEXT_PUBLIC_PLAUSIBLE_ENABLED=$NEXT_PUBLIC_PLAUSIBLE_ENABLED
-RUN npm run build
+RUN pnpm run build
 RUN sh scripts/build-frontend.sh
 
 FROM golang:1.26-alpine AS builder
