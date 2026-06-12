@@ -98,7 +98,7 @@ func TestPlausibleEventHandler_ForwardsCFConnectingIP(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	h := newPlausibleEventHandler(plausibleConfig{eventURL: upstream.URL}, &http.Client{Timeout: 5 * time.Second})
+	h := newPlausibleEventHandler(plausibleConfig{eventURL: upstream.URL, trustProxyHeaders: true}, &http.Client{Timeout: 5 * time.Second})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/pl/event", strings.NewReader(`{"name":"pageview"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -134,7 +134,7 @@ func TestPlausibleEventHandler_FallsBackToXFF(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	h := newPlausibleEventHandler(plausibleConfig{eventURL: upstream.URL}, &http.Client{Timeout: 5 * time.Second})
+	h := newPlausibleEventHandler(plausibleConfig{eventURL: upstream.URL, trustProxyHeaders: true}, &http.Client{Timeout: 5 * time.Second})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/pl/event", strings.NewReader(`{}`))
 	req.Header.Set("X-Forwarded-For", "198.51.100.5, 10.0.0.1")
@@ -253,7 +253,7 @@ func TestPlausibleClientIP_XFFWithoutComma(t *testing.T) {
 	req.Header.Set("X-Forwarded-For", "203.0.113.50")
 	req.RemoteAddr = "10.0.0.1:1234"
 
-	got := plausibleClientIP(req)
+	got := plausibleClientIP(req, true)
 	if got != "203.0.113.50" {
 		t.Fatalf("plausibleClientIP = %q, want \"203.0.113.50\"", got)
 	}
@@ -265,7 +265,7 @@ func TestPlausibleClientIP_CFConnectingIP(t *testing.T) {
 	req.Header.Set("X-Forwarded-For", "10.0.0.1")
 	req.RemoteAddr = "172.16.0.1:5555"
 
-	got := plausibleClientIP(req)
+	got := plausibleClientIP(req, true)
 	if got != "198.51.100.99" {
 		t.Fatalf("plausibleClientIP = %q, want \"198.51.100.99\"", got)
 	}
@@ -276,7 +276,7 @@ func TestPlausibleClientIP_BareRemoteAddr(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.RemoteAddr = "bare-address"
 
-	got := plausibleClientIP(req)
+	got := plausibleClientIP(req, false)
 	if got != "bare-address" {
 		t.Fatalf("plausibleClientIP = %q, want \"bare-address\"", got)
 	}
@@ -286,7 +286,7 @@ func TestPlausibleClientProto_XForwardedProto(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("X-Forwarded-Proto", "https")
 
-	got := plausibleClientProto(req)
+	got := plausibleClientProto(req, true)
 	if got != "https" {
 		t.Fatalf("plausibleClientProto = %q, want \"https\"", got)
 	}
@@ -296,7 +296,7 @@ func TestPlausibleClientProto_TLSSet(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.TLS = &tls.ConnectionState{}
 
-	got := plausibleClientProto(req)
+	got := plausibleClientProto(req, false)
 	if got != "https" {
 		t.Fatalf("plausibleClientProto = %q, want \"https\"", got)
 	}
@@ -305,7 +305,7 @@ func TestPlausibleClientProto_TLSSet(t *testing.T) {
 func TestPlausibleClientProto_DefaultHTTP(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 
-	got := plausibleClientProto(req)
+	got := plausibleClientProto(req, false)
 	if got != "http" {
 		t.Fatalf("plausibleClientProto = %q, want \"http\"", got)
 	}
@@ -508,5 +508,32 @@ func TestPlausibleScriptHandler_MissingUserAgent(t *testing.T) {
 	}
 	if gotUserAgentFromProxy {
 		t.Fatal("proxy should not have explicitly set User-Agent from empty request header")
+	}
+}
+
+func TestPlausibleEventHandler_IgnoresSpoofedIPWhenUntrusted(t *testing.T) {
+	var gotXFF, gotProto string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotXFF = r.Header.Get("X-Forwarded-For")
+		gotProto = r.Header.Get("X-Forwarded-Proto")
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer upstream.Close()
+
+	// trustProxyHeaders defaults to false here.
+	h := newPlausibleEventHandler(plausibleConfig{eventURL: upstream.URL}, &http.Client{Timeout: 5 * time.Second})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/pl/event", strings.NewReader(`{}`))
+	req.Header.Set("CF-Connecting-IP", "203.0.113.7")
+	req.Header.Set("X-Forwarded-For", "10.0.0.1")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.RemoteAddr = "198.51.100.42:5555"
+	h.ServeHTTP(rec, req)
+
+	if gotXFF != "198.51.100.42" {
+		t.Fatalf("untrusted X-Forwarded-For = %q, want RemoteAddr 198.51.100.42", gotXFF)
+	}
+	if gotProto == "https" {
+		t.Fatalf("untrusted X-Forwarded-Proto should not honor the spoofed header")
 	}
 }

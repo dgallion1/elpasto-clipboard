@@ -15,11 +15,14 @@ var (
 	sessionTokenRe = regexp.MustCompile(`(/api/sessions/)[a-z]+-[a-z]+-[a-z]+-[a-z]+-[a-z]+`)
 	// /api/tunnel/{peerId}/{accessToken}/... → /api/tunnel/{peerId}/[REDACTED]/...
 	tunnelAccessTokenRe = regexp.MustCompile(`(/api/tunnel/[0-9a-f-]{36}/)[A-Za-z0-9_-]+`)
+	// ?key=... / ?session=... / ?access_token=... / ?prefix=... query values.
+	sensitiveQueryRe = regexp.MustCompile(`([?&](?:key|session|access_token|prefix)=)[^&\s]+`)
 )
 
 func redactPath(path string) string {
 	path = sessionTokenRe.ReplaceAllString(path, "${1}[REDACTED]")
 	path = tunnelAccessTokenRe.ReplaceAllString(path, "${1}[REDACTED]")
+	path = sensitiveQueryRe.ReplaceAllString(path, "${1}[REDACTED]")
 	return path
 }
 

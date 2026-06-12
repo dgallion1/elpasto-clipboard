@@ -18,6 +18,11 @@ func TestRedactPath(t *testing.T) {
 		// Paths that should not be redacted.
 		{"/api/stats", "/api/stats"},
 		{"/api/downloads/elpasto-tunnel-linux-arm64", "/api/downloads/elpasto-tunnel-linux-arm64"},
+		// Sensitive query parameters are scrubbed too (defensive: in case a
+		// full request target with a query is ever logged).
+		{"/api/stats?key=supersecretkey", "/api/stats?key=[REDACTED]"},
+		{"/api/sessions/lookup?prefix=alpha-bravo-charlie", "/api/sessions/lookup?prefix=[REDACTED]"},
+		{"/api/tunnel/x?session=tok&access_token=at", "/api/tunnel/x?session=[REDACTED]&access_token=[REDACTED]"},
 	}
 	for _, tt := range tests {
 		got := redactPath(tt.input)
