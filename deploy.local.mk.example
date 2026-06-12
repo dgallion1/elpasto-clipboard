@@ -35,11 +35,16 @@ SSH = ssh
 #   TURN_REALM = your-turn-domain.example
 #   TURN_EXTERNAL_IP = 1.2.3.4
 #
-# Session expiry (hours). Default is 24; set higher for long-lived sessions.
-#   SESSION_EXPIRY_HOURS = 87600
+# Session expiry (hours). Default is 24; valid range is 1..8760 (one year).
+# The server rejects values outside this range at startup.
+#   SESSION_EXPIRY_HOURS = 8760
+#
+# Secrets must meet a minimum length (enforced at startup): STATS_DASHBOARD_KEY
+# >= 16 chars, TUNNEL_AUTH_SECRET >= 32 chars. Generate strong values, e.g.:
+#   STATS_DASHBOARD_KEY = $(openssl rand -hex 16)
+#   TUNNEL_AUTH_SECRET  = $(openssl rand -hex 32)
 #
 # Other examples (see docker-compose.yml for the full list):
-#   STATS_DASHBOARD_KEY = your-dashboard-key
 #   GOOGLE_OAUTH_CLIENT_ID = ...apps.googleusercontent.com
 #   GOOGLE_OAUTH_CLIENT_SECRET = ...
 #   TUNNEL_AUTH_ALLOWED_EMAILS = you@example.com,teammate@example.com
