@@ -15,12 +15,48 @@ var (
 	sessionTokenRe = regexp.MustCompile(`(/api/sessions/)[a-z]+-[a-z]+-[a-z]+-[a-z]+-[a-z]+`)
 	// /api/tunnel/{peerId}/{accessToken}/... → /api/tunnel/{peerId}/[REDACTED]/...
 	tunnelAccessTokenRe = regexp.MustCompile(`(/api/tunnel/[0-9a-f-]{36}/)[A-Za-z0-9_-]+`)
+	// ?key=... / ?session=... / ?access_token=... / ?prefix=... query values.
+	sensitiveQueryRe = regexp.MustCompile(`([?&](?:key|session|access_token|prefix)=)[^&\s]+`)
 )
 
 func redactPath(path string) string {
 	path = sessionTokenRe.ReplaceAllString(path, "${1}[REDACTED]")
 	path = tunnelAccessTokenRe.ReplaceAllString(path, "${1}[REDACTED]")
+	path = sensitiveQueryRe.ReplaceAllString(path, "${1}[REDACTED]")
 	return path
+}
+
+// isTunnelRequest reports whether a request targets the tunnel relay, which
+// proxies arbitrary content and manages its own complete header policy.
+func isTunnelRequest(r *http.Request) bool {
+	if strings.HasPrefix(r.URL.Path, "/api/tunnel/") {
+		return true
+	}
+	host := r.Host
+	if i := strings.IndexByte(host, ':'); i >= 0 {
+		host = host[:i]
+	}
+	return strings.HasPrefix(host, "tunnel.")
+}
+
+// securityHeadersMiddleware applies baseline security headers to API and error
+// responses, which would otherwise ship without them (only the frontend handler
+// set them). It skips the tunnel relay so it can't impose defaults — e.g.
+// nosniff on a dev server's untyped assets — that would break relayed content;
+// the relay and the embedded frontend each set their own complete policy.
+func (s *Server) securityHeadersMiddleware(next http.Handler) http.Handler {
+	prod := os.Getenv("NODE_ENV") == "production"
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isTunnelRequest(r) {
+			h := w.Header()
+			h.Set("X-Content-Type-Options", "nosniff")
+			h.Set("Referrer-Policy", "same-origin")
+			if prod {
+				h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) statsMiddleware(next http.Handler) http.Handler {

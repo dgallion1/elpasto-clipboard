@@ -193,8 +193,9 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("/api/tunnel/", relayHandler)
 
 	plCfg := plausibleConfig{
-		scriptURL: s.cfg.PlausibleScriptURL,
-		eventURL:  s.cfg.PlausibleEventURL,
+		scriptURL:         s.cfg.PlausibleScriptURL,
+		eventURL:          s.cfg.PlausibleEventURL,
+		trustProxyHeaders: s.cfg.TrustProxyHeaders,
 	}
 	plClient := &http.Client{Timeout: 10 * time.Second}
 	mux.Handle("GET /pl/script.js", newPlausibleScriptHandler(plCfg, plClient))
@@ -232,5 +233,5 @@ func (s *Server) routes() http.Handler {
 }
 
 func (s *Server) withMiddleware(next http.Handler) http.Handler {
-	return s.recoverMiddleware(s.logMiddleware(s.statsMiddleware(s.corsMiddleware(next))))
+	return s.recoverMiddleware(s.logMiddleware(s.statsMiddleware(s.corsMiddleware(s.securityHeadersMiddleware(next)))))
 }

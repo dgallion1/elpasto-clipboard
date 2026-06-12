@@ -65,7 +65,26 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	s.stats.RecordSessionCreated()
 }
 
+// viewRateLimitPerMinute is a generous per-IP cap for token-gated GET endpoints
+// (session view, downloads, viewer claim). These require a valid capability URL,
+// so this bounds a token-holder's blast radius without affecting normal use.
+const viewRateLimitPerMinute = 300
+
+// rateLimitView throttles a token-gated read endpoint per client IP. Returns
+// false (after writing 429) when the caller should stop.
+func (s *Server) rateLimitView(w http.ResponseWriter, r *http.Request, bucket string) bool {
+	ip := clientIP(r, s.cfg.TrustProxyHeaders)
+	if !s.limiter.Check(bucket+":"+ip, viewRateLimitPerMinute, time.Minute).Allowed {
+		writeError(w, http.StatusTooManyRequests, "Rate limit exceeded")
+		return false
+	}
+	return true
+}
+
 func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
+	if !s.rateLimitView(w, r, "view") {
+		return
+	}
 	token := r.PathValue("token")
 	session := s.store.GetSessionByToken(token)
 	if session == nil {
@@ -217,6 +236,9 @@ func (s *Server) handleBatchCreateSessions(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleClaimTunnelViewer(w http.ResponseWriter, r *http.Request) {
+	if !s.rateLimitView(w, r, "viewer") {
+		return
+	}
 	token := r.PathValue("token")
 	if s.store.GetSessionByToken(token) == nil {
 		writeError(w, http.StatusNotFound, "Not found")

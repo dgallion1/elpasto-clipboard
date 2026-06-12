@@ -20,7 +20,10 @@ type binaryInfo struct {
 	Size     int64  `json:"size"`
 }
 
-func (s *Server) handleListDownloads(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleListDownloads(w http.ResponseWriter, r *http.Request) {
+	if !s.rateLimitView(w, r, "download") {
+		return
+	}
 	entries, err := os.ReadDir(s.cfg.DownloadsDir)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -64,6 +67,9 @@ func (s *Server) handleListDownloads(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
+	if !s.rateLimitView(w, r, "download") {
+		return
+	}
 	filename := r.PathValue("filename")
 
 	if strings.Contains(filename, "/") || strings.Contains(filename, "\\") || strings.Contains(filename, "..") {

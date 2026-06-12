@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"log"
 	"os"
 	"path/filepath"
@@ -603,3 +604,48 @@ func TestRestoreSnapshotAdvancesNextSessionID(t *testing.T) {
 	}
 }
 
+
+func TestRestoreSnapshotRejectsOversizedFile(t *testing.T) {
+	s := New(24)
+	s.maxSnapshotBytes = 16 // bytes
+	path := filepath.Join(t.TempDir(), "snapshot.json")
+	if err := os.WriteFile(path, []byte(`{"version":1,"sessions":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.RestoreSnapshot(path); err == nil {
+		t.Fatal("expected error for snapshot exceeding the size cap")
+	}
+}
+
+func TestRestoreSnapshotCapsSessionCount(t *testing.T) {
+	s := New(24)
+	s.maxSessions = 2
+	now := time.Now().UTC()
+	created := now.Format(time.RFC3339)
+	expires := now.Add(48 * time.Hour).Format(time.RFC3339)
+	data := SnapshotData{
+		Version:       snapshotVersion,
+		NextSessionID: 100,
+		Sessions: []snapshotSession{
+			{ID: 1, Token: "alpha-bravo-cedar-delta-eagle", CreatedAt: created, ExpiresAt: expires},
+			{ID: 2, Token: "fox-golf-hotel-india-juliet", CreatedAt: created, ExpiresAt: expires},
+			{ID: 3, Token: "kilo-lima-mango-nylon-ocean", CreatedAt: created, ExpiresAt: expires},
+			{ID: 4, Token: "papa-queen-radio-sugar-tango", CreatedAt: created, ExpiresAt: expires},
+		},
+	}
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "snapshot.json")
+	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	restored, _, err := s.RestoreSnapshot(path)
+	if err != nil {
+		t.Fatalf("RestoreSnapshot: %v", err)
+	}
+	if restored != 2 {
+		t.Fatalf("restored %d sessions, want 2 (capped at maxSessions)", restored)
+	}
+}

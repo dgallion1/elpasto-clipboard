@@ -129,6 +129,52 @@ func (c Config) ValidateTunnelAuth() error {
 	return nil
 }
 
+const (
+	// maxSessionExpiryHours bounds SESSION_EXPIRY_HOURS to one year. Beyond this
+	// the time.Duration(hours) * time.Hour computation can overflow int64
+	// nanoseconds and silently wrap to a tiny/negative duration.
+	maxSessionExpiryHours = 8760
+	// Minimum lengths for operator secrets so a weak value can't undermine the
+	// HMAC-keyed tunnel auth gate or the stats dashboard.
+	minTunnelAuthSecretLen  = 32
+	minStatsDashboardKeyLen = 16
+)
+
+// Validate runs all startup configuration checks. Call once on the FromEnv
+// config before starting the server.
+func (c Config) Validate() error {
+	if err := c.ValidateTunnelAuth(); err != nil {
+		return err
+	}
+	if err := c.ValidateTunnelBaseURL(); err != nil {
+		return err
+	}
+	if err := c.ValidateSessionExpiry(); err != nil {
+		return err
+	}
+	return c.ValidateSecretStrength()
+}
+
+// ValidateSessionExpiry rejects out-of-range SESSION_EXPIRY_HOURS values. Zero,
+// negative, and overflow-prone values all silently break expiry, so fail fast.
+func (c Config) ValidateSessionExpiry() error {
+	if c.SessionExpiryHours < 1 || c.SessionExpiryHours > maxSessionExpiryHours {
+		return fmt.Errorf("SESSION_EXPIRY_HOURS must be between 1 and %d, got %d", maxSessionExpiryHours, c.SessionExpiryHours)
+	}
+	return nil
+}
+
+// ValidateSecretStrength enforces a minimum length on operator secrets when set.
+func (c Config) ValidateSecretStrength() error {
+	if c.TunnelAuthSecret != "" && len(c.TunnelAuthSecret) < minTunnelAuthSecretLen {
+		return fmt.Errorf("TUNNEL_AUTH_SECRET must be at least %d characters (use e.g. `openssl rand -hex 32`)", minTunnelAuthSecretLen)
+	}
+	if c.StatsDashboardKey != "" && len(c.StatsDashboardKey) < minStatsDashboardKeyLen {
+		return fmt.Errorf("STATS_DASHBOARD_KEY must be at least %d characters", minStatsDashboardKeyLen)
+	}
+	return nil
+}
+
 // ValidateTunnelBaseURL checks that TUNNEL_BASE_URL is a valid absolute HTTP(S) URL when set.
 func (c Config) ValidateTunnelBaseURL() error {
 	if c.TunnelBaseURL == "" {

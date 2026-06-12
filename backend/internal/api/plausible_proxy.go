@@ -12,6 +12,10 @@ import (
 type plausibleConfig struct {
 	scriptURL string
 	eventURL  string
+	// trustProxyHeaders gates whether client-supplied CF-Connecting-IP /
+	// X-Forwarded-* headers are believed when deriving the analytics client IP
+	// and protocol. When false, a client cannot spoof its reported IP/proto.
+	trustProxyHeaders bool
 }
 
 func newPlausibleEventHandler(cfg plausibleConfig, client *http.Client) http.Handler {
@@ -42,9 +46,9 @@ func newPlausibleEventHandler(cfg plausibleConfig, client *http.Client) http.Han
 		if ua := r.Header.Get("User-Agent"); ua != "" {
 			upstreamReq.Header.Set("User-Agent", ua)
 		}
-		upstreamReq.Header.Set("X-Forwarded-Proto", plausibleClientProto(r))
+		upstreamReq.Header.Set("X-Forwarded-Proto", plausibleClientProto(r, cfg.trustProxyHeaders))
 		upstreamReq.Header.Set("X-Forwarded-Host", r.Host)
-		upstreamReq.Header.Set("X-Forwarded-For", plausibleClientIP(r))
+		upstreamReq.Header.Set("X-Forwarded-For", plausibleClientIP(r, cfg.trustProxyHeaders))
 
 		resp, err := client.Do(upstreamReq)
 		if err != nil {
@@ -61,15 +65,17 @@ func newPlausibleEventHandler(cfg plausibleConfig, client *http.Client) http.Han
 	})
 }
 
-func plausibleClientIP(r *http.Request) string {
-	if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cf != "" {
-		return cf
-	}
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if comma := strings.IndexByte(xff, ','); comma > 0 {
-			return strings.TrimSpace(xff[:comma])
+func plausibleClientIP(r *http.Request, trustProxyHeaders bool) string {
+	if trustProxyHeaders {
+		if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cf != "" {
+			return cf
 		}
-		return strings.TrimSpace(xff)
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			if comma := strings.IndexByte(xff, ','); comma > 0 {
+				return strings.TrimSpace(xff[:comma])
+			}
+			return strings.TrimSpace(xff)
+		}
 	}
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return host
@@ -77,9 +83,11 @@ func plausibleClientIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
-func plausibleClientProto(r *http.Request) string {
-	if p := r.Header.Get("X-Forwarded-Proto"); p != "" {
-		return p
+func plausibleClientProto(r *http.Request, trustProxyHeaders bool) string {
+	if trustProxyHeaders {
+		if p := r.Header.Get("X-Forwarded-Proto"); p != "" {
+			return p
+		}
 	}
 	if r.TLS != nil {
 		return "https"

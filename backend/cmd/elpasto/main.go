@@ -49,9 +49,14 @@ var (
 	newHTTPServer = func(port int, handler http.Handler) httpServer {
 		return &stdHTTPServer{
 			server: &http.Server{
-				Addr:              ":" + strconv.Itoa(port),
-				Handler:           handler,
+				Addr:    ":" + strconv.Itoa(port),
+				Handler: handler,
+				// Security: bound slow-header (slowloris), slow-body, and idle
+				// keep-alive connections. WriteTimeout is intentionally unset so
+				// long-lived SSE and tunnel-relay streams are not severed.
 				ReadHeaderTimeout: 5 * time.Second,
+				ReadTimeout:       30 * time.Second,
+				IdleTimeout:       120 * time.Second,
 			},
 		}
 	}
@@ -65,6 +70,12 @@ var (
 func main() {
 	cfg := config.FromEnv()
 	logger := log.New(os.Stdout, "", log.LstdFlags)
+
+	if err := cfg.Validate(); err != nil {
+		logFatalf(logger, "invalid configuration: %v", err)
+		return
+	}
+
 	ctx, stop := notifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -74,6 +85,13 @@ func main() {
 }
 
 func run(ctx context.Context, cfg config.Config, logger *log.Logger) error {
+	// Create the data directory with restrictive permissions before use, so the
+	// snapshot (which holds session tokens) is never written into a world-readable
+	// location and saves don't silently fail when the directory is absent.
+	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
+		return fmt.Errorf("failed to create data directory %q: %w", cfg.DataDir, err)
+	}
+
 	snapshotPath := filepath.Join(cfg.DataDir, "snapshot.json")
 
 	server, err := newAPIServer(cfg, logger)

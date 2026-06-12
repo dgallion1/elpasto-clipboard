@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -304,5 +305,97 @@ func TestMainFatalOnRunError(t *testing.T) {
 
 	if !called {
 		t.Fatal("expected logFatalf to be called")
+	}
+}
+
+func TestMainFatalOnInvalidConfig(t *testing.T) {
+	oldNotifyContext := notifyContext
+	oldRunApp := runApp
+	oldFatalf := logFatalf
+	t.Cleanup(func() {
+		notifyContext = oldNotifyContext
+		runApp = oldRunApp
+		logFatalf = oldFatalf
+	})
+
+	notifyContext = func(parent context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) {
+		return context.WithCancel(parent)
+	}
+	runAppCalled := false
+	runApp = func(context.Context, config.Config, *log.Logger) error {
+		runAppCalled = true
+		return nil
+	}
+	fatalCalled := false
+	logFatalf = func(_ *log.Logger, format string, args ...any) {
+		fatalCalled = true
+		if got := fmt.Sprintf(format, args...); !strings.Contains(got, "configuration") {
+			t.Fatalf("unexpected fatal message: %q", got)
+		}
+	}
+
+	// SESSION_EXPIRY_HOURS=0 is invalid and must abort before running the app.
+	t.Setenv("SESSION_EXPIRY_HOURS", "0")
+	main()
+
+	if !fatalCalled {
+		t.Fatal("expected logFatalf to be called on invalid config")
+	}
+	if runAppCalled {
+		t.Fatal("runApp should not be called when config is invalid")
+	}
+}
+
+func TestNewHTTPServerSetsTimeouts(t *testing.T) {
+	srv := newHTTPServer(4399, http.NewServeMux())
+	std, ok := srv.(*stdHTTPServer)
+	if !ok {
+		t.Fatalf("expected *stdHTTPServer, got %T", srv)
+	}
+	if std.server.ReadHeaderTimeout == 0 {
+		t.Error("ReadHeaderTimeout should be set")
+	}
+	if std.server.ReadTimeout == 0 {
+		t.Error("ReadTimeout should be set to bound slow request bodies")
+	}
+	if std.server.IdleTimeout == 0 {
+		t.Error("IdleTimeout should be set to bound idle keep-alive connections")
+	}
+}
+
+func TestRunCreatesMissingDataDir(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "nested", "data")
+	cfg := config.Config{Port: 4314, DataDir: dataDir}
+	server := &fakeAPIServer{}
+	srv := newFakeHTTPServer()
+	logger := log.New(&bytes.Buffer{}, "", 0)
+
+	oldAPIServer := newAPIServer
+	oldHTTPServer := newHTTPServer
+	t.Cleanup(func() {
+		newAPIServer = oldAPIServer
+		newHTTPServer = oldHTTPServer
+	})
+	newAPIServer = func(config.Config, *log.Logger) (apiServer, error) { return server, nil }
+	newHTTPServer = func(int, http.Handler) httpServer { return srv }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- run(ctx, cfg, logger) }()
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+
+	info, err := os.Stat(dataDir)
+	if err != nil {
+		t.Fatalf("expected data dir to be created: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatal("expected data dir to be a directory")
+	}
+	if perm := info.Mode().Perm(); perm != 0o700 {
+		t.Errorf("data dir perm = %o, want 0700", perm)
 	}
 }

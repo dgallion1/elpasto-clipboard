@@ -90,6 +90,12 @@ func (s *Store) SaveSnapshot(path string) error {
 // Sessions whose expiry is shorter than the current config are extended.
 // The snapshot file is deleted after a successful restore.
 func (s *Store) RestoreSnapshot(path string) (int, int, error) {
+	// Bound the file size before reading it fully, so a tampered or corrupt
+	// snapshot cannot force an unbounded allocation at startup.
+	if info, statErr := os.Stat(path); statErr == nil && s.maxSnapshotBytes > 0 && info.Size() > s.maxSnapshotBytes {
+		return 0, 0, fmt.Errorf("snapshot too large: %d bytes exceeds limit %d", info.Size(), s.maxSnapshotBytes)
+	}
+
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -116,6 +122,11 @@ func (s *Store) RestoreSnapshot(path string) (int, int, error) {
 	minExpiry := now.Add(time.Duration(s.expiryHours) * time.Hour)
 
 	for _, ss := range data.Sessions {
+		// Never restore more than the live session cap, even from a tampered
+		// snapshot, so the in-memory invariant holds.
+		if restoredSessions >= s.maxSessions {
+			break
+		}
 		expiresAt, err := time.Parse(time.RFC3339, ss.ExpiresAt)
 		if err != nil {
 			continue

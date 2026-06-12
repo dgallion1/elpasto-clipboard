@@ -28,31 +28,38 @@ type sessionRecord struct {
 
 const DefaultMaxSessions = 10000
 
+// DefaultMaxSnapshotBytes caps the on-disk snapshot size accepted at restore.
+// ~10k sessions of fixed-shape metadata is a few MB; 64 MiB is generous while
+// preventing a tampered/corrupt file from forcing an unbounded allocation.
+const DefaultMaxSnapshotBytes int64 = 64 << 20
+
 // ErrAtCapacity is returned when the session count cap is reached.
 var ErrAtCapacity = fmt.Errorf("session capacity reached")
 
 // Store is a thread-safe in-memory metadata store for sessions and clips.
 type Store struct {
-	mu              sync.RWMutex
-	sessionsByToken map[string]*sessionRecord
-	sessionsByID    map[int64]*sessionRecord
-	nextSessionID   atomic.Int64
-	now             func() time.Time
-	generateToken   func() (string, error)
-	expiryHours     int
-	maxSessions     int
-	dirty           atomic.Bool
+	mu               sync.RWMutex
+	sessionsByToken  map[string]*sessionRecord
+	sessionsByID     map[int64]*sessionRecord
+	nextSessionID    atomic.Int64
+	now              func() time.Time
+	generateToken    func() (string, error)
+	expiryHours      int
+	maxSessions      int
+	maxSnapshotBytes int64
+	dirty            atomic.Bool
 }
 
 // New creates a new in-memory store.
 func New(expiryHours int) *Store {
 	s := &Store{
-		sessionsByToken: make(map[string]*sessionRecord),
-		sessionsByID:    make(map[int64]*sessionRecord),
-		now:             func() time.Time { return time.Now().UTC() },
-		generateToken:   tokens.Generate,
-		expiryHours:     expiryHours,
-		maxSessions:     DefaultMaxSessions,
+		sessionsByToken:  make(map[string]*sessionRecord),
+		sessionsByID:     make(map[int64]*sessionRecord),
+		now:              func() time.Time { return time.Now().UTC() },
+		generateToken:    tokens.Generate,
+		expiryHours:      expiryHours,
+		maxSessions:      DefaultMaxSessions,
+		maxSnapshotBytes: DefaultMaxSnapshotBytes,
 	}
 	return s
 }

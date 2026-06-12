@@ -20,7 +20,22 @@ var wordSet = func() map[string]struct{} {
 	return set
 }()
 
-var tokenWords = words
+// tokenWords is the deduplicated word list used for generation. The source
+// `words` list contains duplicate entries, which would skew the per-word draw
+// probability and slightly lower guessing entropy; dedup gives every word an
+// equal chance. (Validation already dedups via wordSet.)
+var tokenWords = func() []string {
+	seen := make(map[string]struct{}, len(words))
+	out := make([]string, 0, len(words))
+	for _, word := range words {
+		if _, ok := seen[word]; ok {
+			continue
+		}
+		seen[word] = struct{}{}
+		out = append(out, word)
+	}
+	return out
+}()
 
 func Generate() (string, error) {
 	if len(tokenWords) == 0 {

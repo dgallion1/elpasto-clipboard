@@ -135,3 +135,17 @@ func TestGenerateRandFailure(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestTokenWordsAreDeduplicated(t *testing.T) {
+	seen := make(map[string]bool, len(tokenWords))
+	for _, w := range tokenWords {
+		if seen[w] {
+			t.Errorf("tokenWords contains duplicate %q", w)
+		}
+		seen[w] = true
+	}
+	// The generation slice should match the unique validation set exactly.
+	if len(tokenWords) != len(wordSet) {
+		t.Errorf("tokenWords length %d != unique wordSet length %d", len(tokenWords), len(wordSet))
+	}
+}

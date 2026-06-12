@@ -708,3 +708,75 @@ func TestFromEnv_GetwdErrorFallback(t *testing.T) {
 		t.Errorf("DataDir %q unexpectedly contains deleted dir %q", cfg.DataDir, tmp)
 	}
 }
+
+func TestValidateSessionExpiry(t *testing.T) {
+	cases := []struct {
+		name    string
+		hours   int
+		wantErr bool
+	}{
+		{"default 24h", 24, false},
+		{"minimum 1h", 1, false},
+		{"maximum one year", 8760, false},
+		{"zero rejected", 0, true},
+		{"negative rejected", -1, true},
+		{"over a year rejected", 8761, true},
+		{"overflow value rejected", 9223372036854, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := Config{SessionExpiryHours: tc.hours}
+			err := c.ValidateSessionExpiry()
+			if tc.wantErr && err == nil {
+				t.Fatalf("expected error for %d hours", tc.hours)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("unexpected error for %d hours: %v", tc.hours, err)
+			}
+		})
+	}
+}
+
+func TestValidateSecretStrength(t *testing.T) {
+	t.Run("empty secrets are allowed (feature disabled)", func(t *testing.T) {
+		if err := (Config{}).ValidateSecretStrength(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	t.Run("short tunnel auth secret rejected", func(t *testing.T) {
+		if err := (Config{TunnelAuthSecret: "too-short"}).ValidateSecretStrength(); err == nil {
+			t.Fatal("expected error for short TUNNEL_AUTH_SECRET")
+		}
+	})
+	t.Run("strong tunnel auth secret accepted", func(t *testing.T) {
+		c := Config{TunnelAuthSecret: "this-secret-is-definitely-at-least-32-bytes"}
+		if err := c.ValidateSecretStrength(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	t.Run("short stats dashboard key rejected", func(t *testing.T) {
+		if err := (Config{StatsDashboardKey: "short"}).ValidateSecretStrength(); err == nil {
+			t.Fatal("expected error for short STATS_DASHBOARD_KEY")
+		}
+	})
+	t.Run("strong stats dashboard key accepted", func(t *testing.T) {
+		if err := (Config{StatsDashboardKey: "a-sufficiently-long-key"}).ValidateSecretStrength(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestValidateAggregatesChecks(t *testing.T) {
+	t.Run("valid config passes", func(t *testing.T) {
+		c := Config{SessionExpiryHours: 24}
+		if err := c.Validate(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	t.Run("invalid expiry fails the aggregate", func(t *testing.T) {
+		c := Config{SessionExpiryHours: 0}
+		if err := c.Validate(); err == nil {
+			t.Fatal("expected aggregate validation to fail on expiry")
+		}
+	})
+}
