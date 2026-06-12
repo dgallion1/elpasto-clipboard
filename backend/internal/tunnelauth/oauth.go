@@ -26,6 +26,10 @@ type Config struct {
 	AllowedEmails     map[string]struct{}
 	AllowedDomains    map[string]struct{}
 	TrustProxyHeaders bool
+	// PublicBaseURL, when set, pins the OAuth callback origin (scheme + host)
+	// instead of deriving it from request headers. Recommended in production so
+	// a spoofed Host / X-Forwarded-Host cannot influence the redirect_uri.
+	PublicBaseURL string
 }
 
 // Handler handles the OAuth browser flow for tunnel CLI authentication.
@@ -77,13 +81,23 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 
 	callbackURL := h.buildCallbackURL(r)
 
+	// Derive the OIDC nonce and PKCE challenge from the state's signed nonce.
+	// The nonce binds the returned id_token to this request; PKCE binds the
+	// authorization code to this request. Both are recomputed on callback.
+	sn := stateNonce(state)
+	nonce := deriveOIDCNonce(h.cfg.AuthSecret, sn)
+	challenge := pkceChallengeS256(derivePKCEVerifier(h.cfg.AuthSecret, sn))
+
 	params := url.Values{
-		"client_id":     {h.cfg.ClientID},
-		"redirect_uri":  {callbackURL},
-		"response_type": {"code"},
-		"scope":         {"openid email"},
-		"state":         {state},
-		"prompt":        {"select_account"},
+		"client_id":             {h.cfg.ClientID},
+		"redirect_uri":          {callbackURL},
+		"response_type":         {"code"},
+		"scope":                 {"openid email"},
+		"state":                 {state},
+		"prompt":                {"select_account"},
+		"nonce":                 {nonce},
+		"code_challenge":        {challenge},
+		"code_challenge_method": {"S256"},
 	}
 
 	http.Redirect(w, r, googleAuthURL+"?"+params.Encode(), http.StatusFound)
@@ -119,17 +133,23 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Re-derive the PKCE verifier and OIDC nonce from the (now authenticated)
+	// state nonce. The state's MAC was already verified above.
+	sn := stateNonce(state)
+	codeVerifier := derivePKCEVerifier(h.cfg.AuthSecret, sn)
+	expectedNonce := deriveOIDCNonce(h.cfg.AuthSecret, sn)
+
 	// Exchange authorization code for tokens.
 	callbackURL := h.buildCallbackURL(r)
-	idToken, err := h.exchangeCode(code, callbackURL)
+	idToken, err := h.exchangeCode(code, callbackURL, codeVerifier)
 	if err != nil {
 		h.logger.Printf("tunnel auth: code exchange failed: %v", err)
 		h.redirectToLocalhost(w, r, port, "", "exchange_failed")
 		return
 	}
 
-	// Validate the id_token claims.
-	claims, err := h.validateIDToken(idToken)
+	// Validate the id_token claims (including the nonce binding).
+	claims, err := h.validateIDToken(idToken, expectedNonce)
 	if err != nil {
 		h.logger.Printf("tunnel auth: id_token validation failed: %v", err)
 		h.redirectToLocalhost(w, r, port, "", "validation_failed")
@@ -192,16 +212,19 @@ type idTokenClaims struct {
 	Email         string `json:"email"`
 	EmailVerified bool   `json:"email_verified"`
 	Exp           int64  `json:"exp"`
+	Nonce         string `json:"nonce"`
 }
 
-// exchangeCode exchanges an authorization code for an id_token.
-func (h *Handler) exchangeCode(code, redirectURI string) (string, error) {
+// exchangeCode exchanges an authorization code for an id_token, proving
+// possession of the PKCE code_verifier.
+func (h *Handler) exchangeCode(code, redirectURI, codeVerifier string) (string, error) {
 	data := url.Values{
 		"code":          {code},
 		"client_id":     {h.cfg.ClientID},
 		"client_secret": {h.cfg.ClientSecret},
 		"redirect_uri":  {redirectURI},
 		"grant_type":    {"authorization_code"},
+		"code_verifier": {codeVerifier},
 	}
 
 	resp, err := h.httpClient.PostForm(h.tokenURL, data)
@@ -231,8 +254,10 @@ func (h *Handler) exchangeCode(code, redirectURI string) (string, error) {
 }
 
 // validateIDToken verifies and decodes a Google id_token by calling Google's
-// tokeninfo endpoint, which performs full signature verification.
-func (h *Handler) validateIDToken(idToken string) (*idTokenClaims, error) {
+// tokeninfo endpoint, which performs full signature verification. expectedNonce
+// is the OIDC nonce derived for this auth request; the token's nonce claim must
+// match it, binding the token to the request (defeats id_token replay/injection).
+func (h *Handler) validateIDToken(idToken, expectedNonce string) (*idTokenClaims, error) {
 	resp, err := h.httpClient.Get(h.tokenInfoURL + "?id_token=" + url.QueryEscape(idToken))
 	if err != nil {
 		return nil, fmt.Errorf("tokeninfo request: %w", err)
@@ -271,6 +296,12 @@ func (h *Handler) validateIDToken(idToken string) (*idTokenClaims, error) {
 		return nil, fmt.Errorf("missing email claim")
 	}
 
+	// Bind the token to this auth request: the id_token's nonce must match the
+	// nonce we derived and sent in the authorize request.
+	if claims.Nonce != expectedNonce {
+		return nil, fmt.Errorf("nonce mismatch")
+	}
+
 	return &claims, nil
 }
 
@@ -296,6 +327,12 @@ func (h *Handler) isAuthorized(email string) bool {
 // Only trusts proxy headers when TrustProxyHeaders is enabled, matching the
 // rest of the server's proxy-trust boundary.
 func (h *Handler) buildCallbackURL(r *http.Request) string {
+	// Security: a configured public base URL pins the callback origin so a
+	// spoofed Host / X-Forwarded-Host cannot influence the redirect_uri.
+	if h.cfg.PublicBaseURL != "" {
+		return strings.TrimRight(h.cfg.PublicBaseURL, "/") + "/api/auth/tunnel/callback"
+	}
+
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"

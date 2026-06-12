@@ -41,6 +41,44 @@ func MintState(secret string, port int) (string, error) {
 	return payload + ":" + sig, nil
 }
 
+// stateNonce returns the random nonce portion of a state value (the first
+// colon-separated field), or "" if the state is malformed.
+func stateNonce(state string) string {
+	if i := strings.IndexByte(state, ':'); i > 0 {
+		return state[:i]
+	}
+	return ""
+}
+
+// hmacB64 returns base64url(HMAC-SHA256(secret, label+":"+nonce)).
+func hmacB64(secret, label, nonce string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(label + ":" + nonce))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// deriveOIDCNonce derives the OpenID Connect `nonce` for an auth request from
+// the state's signed nonce. It is sent in the authorize request and must be
+// echoed in the id_token, binding the token to this specific request. Because it
+// is HMAC-keyed by the server secret, a client cannot forge a matching pair.
+func deriveOIDCNonce(secret, nonce string) string {
+	return hmacB64(secret, "elpasto-oidc-nonce", nonce)
+}
+
+// derivePKCEVerifier derives the PKCE code_verifier from the state's signed
+// nonce. It is secret-keyed and only ever sent server-to-Google in the back
+// channel (never in a redirect URL), so it stays confidential even though the
+// state nonce it is derived from is public.
+func derivePKCEVerifier(secret, nonce string) string {
+	return hmacB64(secret, "elpasto-pkce-verifier", nonce)
+}
+
+// pkceChallengeS256 computes the S256 code_challenge for a verifier.
+func pkceChallengeS256(verifier string) string {
+	sum := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
 // ValidateState verifies the OAuth state and returns the embedded CLI callback port.
 func ValidateState(secret, state string) (int, error) {
 	if secret == "" {

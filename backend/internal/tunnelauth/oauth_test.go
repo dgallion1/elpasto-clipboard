@@ -85,6 +85,18 @@ func TestStartRedirectsToGoogle(t *testing.T) {
 	if u.Query().Get("redirect_uri") != "https://example.com/api/auth/tunnel/callback" {
 		t.Fatalf("unexpected redirect_uri: %s", u.Query().Get("redirect_uri"))
 	}
+	// OIDC nonce and PKCE challenge must be present and derived from the state.
+	sn := stateNonce(u.Query().Get("state"))
+	if got, want := u.Query().Get("nonce"), deriveOIDCNonce(testConfig().AuthSecret, sn); got != want {
+		t.Fatalf("nonce = %q, want %q", got, want)
+	}
+	if u.Query().Get("code_challenge_method") != "S256" {
+		t.Fatalf("code_challenge_method = %q, want S256", u.Query().Get("code_challenge_method"))
+	}
+	wantChallenge := pkceChallengeS256(derivePKCEVerifier(testConfig().AuthSecret, sn))
+	if got := u.Query().Get("code_challenge"); got != wantChallenge {
+		t.Fatalf("code_challenge = %q, want %q", got, wantChallenge)
+	}
 }
 
 func TestStartMissingPort(t *testing.T) {
@@ -145,6 +157,7 @@ func newTestHandlerWithGoogle(t *testing.T, cfg Config, idToken string) (*Handle
 
 func TestCallbackSuccess(t *testing.T) {
 	cfg := testConfig()
+	state, _ := MintState(cfg.AuthSecret, 54321)
 	idToken := fakeIDToken(idTokenClaims{
 		Iss:           "https://accounts.google.com",
 		Aud:           cfg.ClientID,
@@ -152,10 +165,10 @@ func TestCallbackSuccess(t *testing.T) {
 		Email:         "alice@example.com",
 		EmailVerified: true,
 		Exp:           time.Now().Add(time.Hour).Unix(),
+		Nonce:         deriveOIDCNonce(cfg.AuthSecret, stateNonce(state)),
 	})
 	h, _ := newTestHandlerWithGoogle(t, cfg, idToken)
 
-	state, _ := MintState(cfg.AuthSecret, 54321)
 	req := httptest.NewRequest("GET",
 		fmt.Sprintf("/api/auth/tunnel/callback?code=test-code&state=%s", url.QueryEscape(state)), nil)
 	req.Host = "example.com"
@@ -256,6 +269,7 @@ func TestCallbackUnverifiedEmail(t *testing.T) {
 
 func TestCallbackUnauthorizedEmail(t *testing.T) {
 	cfg := testConfig()
+	state, _ := MintState(cfg.AuthSecret, 54321)
 	idToken := fakeIDToken(idTokenClaims{
 		Iss:           "https://accounts.google.com",
 		Aud:           cfg.ClientID,
@@ -263,10 +277,10 @@ func TestCallbackUnauthorizedEmail(t *testing.T) {
 		Email:         "evil@hacker.com",
 		EmailVerified: true,
 		Exp:           time.Now().Add(time.Hour).Unix(),
+		Nonce:         deriveOIDCNonce(cfg.AuthSecret, stateNonce(state)),
 	})
 	h, _ := newTestHandlerWithGoogle(t, cfg, idToken)
 
-	state, _ := MintState(cfg.AuthSecret, 54321)
 	req := httptest.NewRequest("GET",
 		fmt.Sprintf("/api/auth/tunnel/callback?code=test&state=%s", url.QueryEscape(state)), nil)
 	req.Host = "example.com"
@@ -282,6 +296,7 @@ func TestCallbackUnauthorizedEmail(t *testing.T) {
 
 func TestCallbackDomainAllowlist(t *testing.T) {
 	cfg := testConfig()
+	state, _ := MintState(cfg.AuthSecret, 54321)
 	idToken := fakeIDToken(idTokenClaims{
 		Iss:           "https://accounts.google.com",
 		Aud:           cfg.ClientID,
@@ -289,10 +304,10 @@ func TestCallbackDomainAllowlist(t *testing.T) {
 		Email:         "bob@corp.example.com",
 		EmailVerified: true,
 		Exp:           time.Now().Add(time.Hour).Unix(),
+		Nonce:         deriveOIDCNonce(cfg.AuthSecret, stateNonce(state)),
 	})
 	h, _ := newTestHandlerWithGoogle(t, cfg, idToken)
 
-	state, _ := MintState(cfg.AuthSecret, 54321)
 	req := httptest.NewRequest("GET",
 		fmt.Sprintf("/api/auth/tunnel/callback?code=test&state=%s", url.QueryEscape(state)), nil)
 	req.Host = "example.com"
@@ -703,6 +718,7 @@ func TestNewHandlerMissingAuthSecret(t *testing.T) {
 func TestValidateIDTokenAlternateIssuer(t *testing.T) {
 	// Google sometimes returns "accounts.google.com" without the https:// prefix.
 	cfg := testConfig()
+	state, _ := MintState(cfg.AuthSecret, 54321)
 	idToken := fakeIDToken(idTokenClaims{
 		Iss:           "accounts.google.com",
 		Aud:           cfg.ClientID,
@@ -710,10 +726,10 @@ func TestValidateIDTokenAlternateIssuer(t *testing.T) {
 		Email:         "alice@example.com",
 		EmailVerified: true,
 		Exp:           time.Now().Add(time.Hour).Unix(),
+		Nonce:         deriveOIDCNonce(cfg.AuthSecret, stateNonce(state)),
 	})
 	h, _ := newTestHandlerWithGoogle(t, cfg, idToken)
 
-	state, _ := MintState(cfg.AuthSecret, 54321)
 	req := httptest.NewRequest("GET",
 		fmt.Sprintf("/api/auth/tunnel/callback?code=test&state=%s", url.QueryEscape(state)), nil)
 	req.Host = "example.com"
@@ -748,7 +764,7 @@ func TestExchangeCode_HTTPClientError(t *testing.T) {
 	// Point tokenURL at an invalid URL to trigger HTTP client error.
 	h.tokenURL = "http://127.0.0.1:0/nonexistent"
 
-	_, err := h.exchangeCode("some-code", "http://localhost/callback")
+	_, err := h.exchangeCode("some-code", "http://localhost/callback", "test-verifier")
 	if err == nil {
 		t.Fatal("expected error from HTTP client failure")
 	}
@@ -768,7 +784,7 @@ func TestExchangeCode_Non200Response(t *testing.T) {
 	h, _ := New(cfg, nil, log.Default())
 	h.tokenURL = srv.URL
 
-	_, err := h.exchangeCode("some-code", "http://localhost/callback")
+	_, err := h.exchangeCode("some-code", "http://localhost/callback", "test-verifier")
 	if err == nil {
 		t.Fatal("expected error for non-200 response")
 	}
@@ -788,7 +804,7 @@ func TestExchangeCode_InvalidJSON(t *testing.T) {
 	h, _ := New(cfg, nil, log.Default())
 	h.tokenURL = srv.URL
 
-	_, err := h.exchangeCode("some-code", "http://localhost/callback")
+	_, err := h.exchangeCode("some-code", "http://localhost/callback", "test-verifier")
 	if err == nil {
 		t.Fatal("expected error for invalid JSON response")
 	}
@@ -808,7 +824,7 @@ func TestExchangeCode_EmptyIDToken(t *testing.T) {
 	h, _ := New(cfg, nil, log.Default())
 	h.tokenURL = srv.URL
 
-	_, err := h.exchangeCode("some-code", "http://localhost/callback")
+	_, err := h.exchangeCode("some-code", "http://localhost/callback", "test-verifier")
 	if err == nil {
 		t.Fatal("expected error for empty id_token")
 	}
@@ -823,7 +839,7 @@ func TestValidateIDToken_HTTPClientError(t *testing.T) {
 	// Point tokenInfoURL at an invalid URL.
 	h.tokenInfoURL = "http://127.0.0.1:0/nonexistent"
 
-	_, err := h.validateIDToken("fake-token")
+	_, err := h.validateIDToken("fake-token", "")
 	if err == nil {
 		t.Fatal("expected error from HTTP client failure")
 	}
@@ -843,7 +859,7 @@ func TestValidateIDToken_InvalidJSON(t *testing.T) {
 	h, _ := New(cfg, nil, log.Default())
 	h.tokenInfoURL = srv.URL
 
-	_, err := h.validateIDToken("fake-token")
+	_, err := h.validateIDToken("fake-token", "")
 	if err == nil {
 		t.Fatal("expected error for invalid JSON from tokeninfo")
 	}
@@ -881,7 +897,7 @@ func TestValidateIDToken_Non200Response(t *testing.T) {
 	h, _ := New(cfg, nil, log.Default())
 	h.tokenInfoURL = srv.URL
 
-	_, err := h.validateIDToken("fake-token")
+	_, err := h.validateIDToken("fake-token", "")
 	if err == nil {
 		t.Fatal("expected error for non-200 response")
 	}
@@ -954,7 +970,7 @@ func TestValidateIDTokenConnectionError(t *testing.T) {
 	h, _ := New(cfg, nil, log.Default())
 	h.tokenInfoURL = "http://127.0.0.1:0/nonexistent"
 
-	_, err := h.validateIDToken("fake-token")
+	_, err := h.validateIDToken("fake-token", "")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -986,7 +1002,7 @@ func TestExchangeCode_BodyReadError(t *testing.T) {
 	}, log.Default())
 	h.tokenURL = "http://fake-google.test/token"
 
-	_, err := h.exchangeCode("some-code", "http://localhost/callback")
+	_, err := h.exchangeCode("some-code", "http://localhost/callback", "test-verifier")
 	if err == nil {
 		t.Fatal("expected error from body read failure")
 	}
@@ -1002,7 +1018,7 @@ func TestValidateIDToken_BodyReadError(t *testing.T) {
 	}, log.Default())
 	h.tokenInfoURL = "http://fake-google.test/tokeninfo"
 
-	_, err := h.validateIDToken("fake-token")
+	_, err := h.validateIDToken("fake-token", "")
 	if err == nil {
 		t.Fatal("expected error from body read failure")
 	}
@@ -1031,6 +1047,7 @@ func TestCallbackMintFailure(t *testing.T) {
 	// to create a fake Google server where the token endpoint clears h.cfg.AuthSecret
 	// as a side effect before returning the id_token.
 	cfg := testConfig()
+	state, _ := MintState(cfg.AuthSecret, 54321)
 	idToken := fakeIDToken(idTokenClaims{
 		Iss:           "https://accounts.google.com",
 		Aud:           cfg.ClientID,
@@ -1038,6 +1055,7 @@ func TestCallbackMintFailure(t *testing.T) {
 		Email:         "alice@example.com",
 		EmailVerified: true,
 		Exp:           time.Now().Add(time.Hour).Unix(),
+		Nonce:         deriveOIDCNonce(cfg.AuthSecret, stateNonce(state)),
 	})
 
 	h, err := New(cfg, nil, log.Default())
@@ -1075,8 +1093,6 @@ func TestCallbackMintFailure(t *testing.T) {
 	h.tokenURL = googleSrv.URL + "/token"
 	h.tokenInfoURL = googleSrv.URL + "/tokeninfo"
 
-	state, _ := MintState(cfg.AuthSecret, 54321)
-
 	req := httptest.NewRequest("GET",
 		fmt.Sprintf("/api/auth/tunnel/callback?code=test-code&state=%s", url.QueryEscape(state)), nil)
 	req.Host = "example.com"
@@ -1090,5 +1106,106 @@ func TestCallbackMintFailure(t *testing.T) {
 	u, _ := url.Parse(loc)
 	if u.Query().Get("error") != "internal_error" {
 		t.Fatalf("expected internal_error, got: %s", u.Query().Get("error"))
+	}
+}
+
+func TestCallbackRejectsNonceMismatch(t *testing.T) {
+	// An id_token whose nonce does not match the one bound to this request must
+	// be rejected (defeats id_token replay/injection).
+	cfg := testConfig()
+	state, _ := MintState(cfg.AuthSecret, 54321)
+	idToken := fakeIDToken(idTokenClaims{
+		Iss:           "https://accounts.google.com",
+		Aud:           cfg.ClientID,
+		Sub:           "google-sub-123",
+		Email:         "alice@example.com",
+		EmailVerified: true,
+		Exp:           time.Now().Add(time.Hour).Unix(),
+		Nonce:         "attacker-supplied-nonce",
+	})
+	h, _ := newTestHandlerWithGoogle(t, cfg, idToken)
+
+	req := httptest.NewRequest("GET",
+		fmt.Sprintf("/api/auth/tunnel/callback?code=test&state=%s", url.QueryEscape(state)), nil)
+	req.Host = "example.com"
+	w := httptest.NewRecorder()
+	h.Callback(w, req)
+
+	u, _ := url.Parse(w.Header().Get("Location"))
+	if u.Query().Get("error") != "validation_failed" {
+		t.Fatalf("expected validation_failed on nonce mismatch, got: %s", u.Query().Get("error"))
+	}
+	if u.Query().Get("token") != "" {
+		t.Fatal("no token should be issued on nonce mismatch")
+	}
+}
+
+func TestCallbackSendsPKCEVerifier(t *testing.T) {
+	cfg := testConfig()
+	state, _ := MintState(cfg.AuthSecret, 54321)
+	wantVerifier := derivePKCEVerifier(cfg.AuthSecret, stateNonce(state))
+
+	var gotVerifier string
+	idToken := fakeIDToken(idTokenClaims{
+		Iss: "https://accounts.google.com", Aud: cfg.ClientID, Sub: "s", Email: "alice@example.com",
+		EmailVerified: true, Exp: time.Now().Add(time.Hour).Unix(),
+		Nonce: deriveOIDCNonce(cfg.AuthSecret, stateNonce(state)),
+	})
+	mux := http.NewServeMux()
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		gotVerifier = r.Form.Get("code_verifier")
+		json.NewEncoder(w).Encode(map[string]string{"id_token": idToken})
+	})
+	mux.HandleFunc("/tokeninfo", func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.SplitN(r.URL.Query().Get("id_token"), ".", 3)
+		payload, _ := base64.RawURLEncoding.DecodeString(parts[1])
+		w.Write(payload)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	h, _ := New(cfg, nil, log.Default())
+	h.tokenURL = srv.URL + "/token"
+	h.tokenInfoURL = srv.URL + "/tokeninfo"
+
+	req := httptest.NewRequest("GET",
+		fmt.Sprintf("/api/auth/tunnel/callback?code=test&state=%s", url.QueryEscape(state)), nil)
+	req.Host = "example.com"
+	h.Callback(httptest.NewRecorder(), req)
+
+	if gotVerifier != wantVerifier {
+		t.Fatalf("token endpoint received code_verifier %q, want %q", gotVerifier, wantVerifier)
+	}
+}
+
+func TestBuildCallbackURL_PinnedToPublicBaseURL(t *testing.T) {
+	// When PublicBaseURL is configured, the callback host is pinned and a spoofed
+	// X-Forwarded-Host (even with proxy headers trusted) cannot redirect OAuth.
+	cfg := testConfig()
+	cfg.TrustProxyHeaders = true
+	cfg.PublicBaseURL = "https://elpasto.app"
+	h, _ := New(cfg, nil, nil)
+
+	req := httptest.NewRequest("GET", "/api/auth/tunnel/start", nil)
+	req.Host = "example.com"
+	req.Header.Set("X-Forwarded-Host", "evil.attacker.test")
+	req.Header.Set("X-Forwarded-Proto", "http")
+
+	got := h.buildCallbackURL(req)
+	want := "https://elpasto.app/api/auth/tunnel/callback"
+	if got != want {
+		t.Fatalf("buildCallbackURL = %q, want pinned %q", got, want)
+	}
+}
+
+func TestBuildCallbackURL_PinnedTrimsTrailingSlash(t *testing.T) {
+	cfg := testConfig()
+	cfg.PublicBaseURL = "https://elpasto.app/"
+	h, _ := New(cfg, nil, nil)
+	req := httptest.NewRequest("GET", "/api/auth/tunnel/start", nil)
+	req.Host = "example.com"
+	if got, want := h.buildCallbackURL(req), "https://elpasto.app/api/auth/tunnel/callback"; got != want {
+		t.Fatalf("buildCallbackURL = %q, want %q", got, want)
 	}
 }

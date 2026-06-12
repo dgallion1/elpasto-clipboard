@@ -127,3 +127,44 @@ func TestMintState_NegativePort(t *testing.T) {
 	}
 }
 
+
+func TestDeriveOIDCNonceDeterministicAndSecretBound(t *testing.T) {
+	state, _ := MintState("secret-value-at-least-32-bytes-long!!", 8080)
+	n := stateNonce(state)
+	if n == "" {
+		t.Fatal("stateNonce returned empty")
+	}
+	a := deriveOIDCNonce("secret-value-at-least-32-bytes-long!!", n)
+	b := deriveOIDCNonce("secret-value-at-least-32-bytes-long!!", n)
+	if a == "" || a != b {
+		t.Fatalf("deriveOIDCNonce not deterministic: %q vs %q", a, b)
+	}
+	// A different secret yields a different nonce (secret-bound).
+	if c := deriveOIDCNonce("a-totally-different-secret-value-here!", n); c == a {
+		t.Fatal("deriveOIDCNonce should depend on the secret")
+	}
+	// A different state nonce yields a different value.
+	state2, _ := MintState("secret-value-at-least-32-bytes-long!!", 8080)
+	if d := deriveOIDCNonce("secret-value-at-least-32-bytes-long!!", stateNonce(state2)); d == a {
+		t.Fatal("deriveOIDCNonce should depend on the state nonce")
+	}
+}
+
+func TestDerivePKCEVerifierAndChallenge(t *testing.T) {
+	state, _ := MintState("secret-value-at-least-32-bytes-long!!", 8080)
+	n := stateNonce(state)
+	v := derivePKCEVerifier("secret-value-at-least-32-bytes-long!!", n)
+	// RFC 7636: verifier is 43..128 chars of [A-Za-z0-9-._~].
+	if len(v) < 43 || len(v) > 128 {
+		t.Fatalf("verifier length %d out of RFC range", len(v))
+	}
+	// Challenge is base64url(SHA256(verifier)) and must be deterministic.
+	want := base64.RawURLEncoding.EncodeToString(func() []byte { h := sha256.Sum256([]byte(v)); return h[:] }())
+	if got := pkceChallengeS256(v); got != want {
+		t.Fatalf("pkceChallengeS256 = %q, want %q", got, want)
+	}
+	// Verifier is secret-bound.
+	if v2 := derivePKCEVerifier("another-secret-value-at-least-32-byte", n); v2 == v {
+		t.Fatal("verifier should depend on the secret")
+	}
+}
