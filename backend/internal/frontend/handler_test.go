@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -511,5 +512,51 @@ func TestEscapedTokenValueShortMarshal(t *testing.T) {
 	got := escapedTokenValue("hello")
 	if string(got) != "hello" {
 		t.Fatalf("expected fallback to raw token, got %q", got)
+	}
+}
+
+func TestNonceCSPNoncesInlineScripts(t *testing.T) {
+	handler := testHandler(t, fstest.MapFS{
+		"index.html": {Data: []byte(`<html><head></head><body><script>doThing()</script><script src="/a.js"></script>home</body></html>`)},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	csp := rec.Header().Get("Content-Security-Policy")
+	// Pull the script-src directive out and assert it's nonce-based, not unsafe-inline.
+	var scriptSrc string
+	for _, d := range strings.Split(csp, ";") {
+		if strings.Contains(d, "script-src") {
+			scriptSrc = strings.TrimSpace(d)
+		}
+	}
+	if scriptSrc == "" {
+		t.Fatalf("no script-src directive in CSP: %q", csp)
+	}
+	if strings.Contains(scriptSrc, "'unsafe-inline'") {
+		t.Fatalf("script-src must not contain 'unsafe-inline': %q", scriptSrc)
+	}
+	m := regexp.MustCompile(`'nonce-([A-Za-z0-9+/_-]+)'`).FindStringSubmatch(scriptSrc)
+	if m == nil {
+		t.Fatalf("script-src must contain a nonce: %q", scriptSrc)
+	}
+	nonce := m[1]
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `<script nonce="`+nonce+`">doThing()`) {
+		t.Fatalf("inline script not nonced with %q; body: %s", nonce, body)
+	}
+	if strings.Contains(body, "__ELPASTO_NONCE__") {
+		t.Fatal("nonce placeholder leaked into served HTML")
+	}
+
+	// A second request must use a different nonce.
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, httptest.NewRequest(http.MethodGet, "/", nil))
+	m2 := regexp.MustCompile(`'nonce-([A-Za-z0-9+/_-]+)'`).FindStringSubmatch(rec2.Header().Get("Content-Security-Policy"))
+	if m2 != nil && m2[1] == nonce {
+		t.Fatal("nonce must be unique per request")
 	}
 }

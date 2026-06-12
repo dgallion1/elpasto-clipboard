@@ -2,13 +2,16 @@ package frontend
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
-	"encoding/json"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"io/fs"
 	"net/http"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 
 	"elpasto/backend/internal/tokens"
@@ -16,7 +19,28 @@ import (
 
 const tokenPlaceholder = "__ELPASTO_TOKEN__"
 const tunnelPeerPlaceholder = "__ELPASTO_TUNNEL_PEER__"
+const noncePlaceholder = "__ELPASTO_NONCE__"
 const buildVersionPath = "/__elpasto/version"
+
+// scriptTagStartRe matches the start of a <script> tag (opening tag only) so a
+// per-request CSP nonce can be added to every inline and external script.
+var scriptTagStartRe = regexp.MustCompile(`<script([\s/>])`)
+
+// addNoncePlaceholder inserts a nonce attribute placeholder into every <script>
+// tag. The placeholder is replaced with the real per-request nonce when the HTML
+// is served, so inline scripts execute under a nonce-based CSP (letting us drop
+// 'unsafe-inline' from script-src — closing the inline-script XSS surface).
+func addNoncePlaceholder(body []byte) []byte {
+	return scriptTagStartRe.ReplaceAll(body, []byte(`<script nonce="`+noncePlaceholder+`"${1}`))
+}
+
+// newNonce returns a fresh random base64 CSP nonce.
+func newNonce() string {
+	b := make([]byte, 16)
+	// crypto/rand.Read never returns an error on supported platforms.
+	_, _ = rand.Read(b)
+	return base64.RawStdEncoding.EncodeToString(b)
+}
 
 type handler struct {
 	dist           fs.FS
@@ -42,27 +66,30 @@ func Handler() http.Handler {
 }
 
 func newHandler(distRoot fs.FS) http.Handler {
-	indexHTML := mustReadHTML(distRoot, "index.html", placeholderHTML)
-	tokenHTML := mustReadHTML(distRoot, "token.html", indexHTML)
-	tunnelHTML := mustReadHTML(distRoot, "tunnel.html", indexHTML)
-	tunnelViewHTML := mustReadHTML(distRoot, "tunnel-view.html", tunnelHTML)
-	statsHTML := mustReadHTML(distRoot, "stats.html", indexHTML)
-	buildID := computeBuildID(indexHTML, tokenHTML)
+	// Resolve fallbacks on raw HTML first, then add the nonce placeholder exactly
+	// once per document (so a fallback can't double-apply it).
+	indexRaw := mustReadHTML(distRoot, "index.html", placeholderHTML)
+	tokenRaw := mustReadHTML(distRoot, "token.html", indexRaw)
+	tunnelRaw := mustReadHTML(distRoot, "tunnel.html", indexRaw)
+	tunnelViewRaw := mustReadHTML(distRoot, "tunnel-view.html", tunnelRaw)
+	statsRaw := mustReadHTML(distRoot, "stats.html", indexRaw)
+	buildID := computeBuildID(indexRaw, tokenRaw)
 
 	return &handler{
 		dist:           distRoot,
 		files:          http.FileServer(http.FS(distRoot)),
 		buildID:        buildID,
-		indexHTML:      injectBuildID(indexHTML, buildID),
-		tokenHTML:      injectBuildID(tokenHTML, buildID),
-		tunnelHTML:     injectBuildID(tunnelHTML, buildID),
-		tunnelViewHTML: injectBuildID(tunnelViewHTML, buildID),
-		statsHTML:      injectBuildID(statsHTML, buildID),
+		indexHTML:      injectBuildID(addNoncePlaceholder(indexRaw), buildID),
+		tokenHTML:      injectBuildID(addNoncePlaceholder(tokenRaw), buildID),
+		tunnelHTML:     injectBuildID(addNoncePlaceholder(tunnelRaw), buildID),
+		tunnelViewHTML: injectBuildID(addNoncePlaceholder(tunnelViewRaw), buildID),
+		statsHTML:      injectBuildID(addNoncePlaceholder(statsRaw), buildID),
 	}
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	setSecurityHeaders(w.Header())
+	nonce := newNonce()
+	setSecurityHeaders(w.Header(), nonce)
 
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.NotFound(w, r)
@@ -88,27 +115,27 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.URL.Path == "/" {
-		serveHTML(w, r, h.indexHTML)
+		serveHTML(w, r, h.indexHTML, nonce)
 		return
 	}
 
 	if r.URL.Path == "/stats" || r.URL.Path == "/stats/" {
-		serveHTML(w, r, h.statsHTML)
+		serveHTML(w, r, h.statsHTML, nonce)
 		return
 	}
 
 	if token, ok := tokenFromPath(r.URL.Path); ok {
-		serveHTML(w, r, bytes.ReplaceAll(h.tokenHTML, []byte(tokenPlaceholder), escapedTokenValue(token)))
+		serveHTML(w, r, bytes.ReplaceAll(h.tokenHTML, []byte(tokenPlaceholder), escapedTokenValue(token)), nonce)
 		return
 	}
 
 	if peerId, ok := tunnelPeerFromPath(r.URL.Path); ok {
-		serveHTML(w, r, bytes.ReplaceAll(h.tunnelHTML, []byte(tunnelPeerPlaceholder), []byte(peerId)))
+		serveHTML(w, r, bytes.ReplaceAll(h.tunnelHTML, []byte(tunnelPeerPlaceholder), []byte(peerId)), nonce)
 		return
 	}
 
 	if peerId, ok := tunnelViewPeerFromPath(r.URL.Path); ok {
-		serveHTML(w, r, bytes.ReplaceAll(h.tunnelViewHTML, []byte(tunnelPeerPlaceholder), []byte(peerId)))
+		serveHTML(w, r, bytes.ReplaceAll(h.tunnelViewHTML, []byte(tunnelPeerPlaceholder), []byte(peerId)), nonce)
 		return
 	}
 
@@ -134,10 +161,10 @@ func (h *handler) serveEmbeddedFile(w http.ResponseWriter, r *http.Request, name
 	return true
 }
 
-func setSecurityHeaders(headers http.Header) {
+func setSecurityHeaders(headers http.Header, nonce string) {
 	headers.Set("Content-Security-Policy", strings.Join([]string{
 		"default-src 'self'",
-		"script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com",
+		"script-src 'self' 'nonce-" + nonce + "' https://static.cloudflareinsights.com",
 		"style-src 'self' 'unsafe-inline'",
 		"img-src 'self' blob: data:",
 		"connect-src 'self' ws: wss: https://cloudflareinsights.com",
@@ -157,7 +184,7 @@ func setSecurityHeaders(headers http.Header) {
 	}
 }
 
-func serveHTML(w http.ResponseWriter, r *http.Request, body []byte) {
+func serveHTML(w http.ResponseWriter, r *http.Request, body []byte, nonce string) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -166,6 +193,8 @@ func serveHTML(w http.ResponseWriter, r *http.Request, body []byte) {
 		return
 	}
 
+	// Stamp the per-request nonce into every script tag (and the CSP header).
+	body = bytes.ReplaceAll(body, []byte(noncePlaceholder), []byte(nonce))
 	_, _ = w.Write(body)
 }
 
@@ -254,7 +283,7 @@ func computeBuildID(indexHTML []byte, tokenHTML []byte) string {
 }
 
 func injectBuildID(body []byte, buildID string) []byte {
-	snippet := []byte(`<script>window.__ELPASTO_BUILD_ID__="` + buildID + `";</script>`)
+	snippet := []byte(`<script nonce="` + noncePlaceholder + `">window.__ELPASTO_BUILD_ID__="` + buildID + `";</script>`)
 
 	if idx := bytes.Index(body, []byte("</head>")); idx >= 0 {
 		return bytes.Join([][]byte{body[:idx], snippet, body[idx:]}, nil)
