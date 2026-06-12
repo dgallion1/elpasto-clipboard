@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import "./globals.css";
 import { FrontendVersionWatcher } from "./FrontendVersionWatcher";
+import { Analytics } from "./Analytics";
 
 export const metadata: Metadata = {
   title: "elPasto — Shared Clipboard",
@@ -21,28 +21,10 @@ export default function RootLayout({
     <html lang="en">
       <body className="bg-neutral-950 text-neutral-100 antialiased min-h-screen">
         <FrontendVersionWatcher />
-        {cfAnalyticsToken ? (
-          <Script
-            id="cf-web-analytics"
-            src="https://static.cloudflareinsights.com/beacon.min.js"
-            strategy="afterInteractive"
-            data-cf-beacon={JSON.stringify({ token: cfAnalyticsToken })}
-          />
-        ) : null}
-        {plausibleAnalyticsEnabled ? (
-          <>
-            <Script
-              id="plausible-init"
-              src="/pl/init.js"
-              strategy="beforeInteractive"
-            />
-            <Script
-              id="plausible-script"
-              src="/pl/script.js"
-              strategy="afterInteractive"
-            />
-          </>
-        ) : null}
+        <Analytics
+          cfAnalyticsToken={cfAnalyticsToken}
+          plausibleEnabled={plausibleAnalyticsEnabled}
+        />
         {children}
       </body>
     </html>
