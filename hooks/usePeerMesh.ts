@@ -1083,13 +1083,8 @@ export function usePeerMesh({
           type: "threads:sync",
           threads: getThreadRecordsRef.current?.() ?? [],
         });
-        // Sync peer names with newly connected peer
-        if (Object.keys(peerNamesRef.current).length > 0) {
-          sendControlMessageToPeer(state.peerId, {
-            type: "peer:names-sync",
-            names: peerNamesRef.current,
-          });
-        }
+        // Security (M1): each peer self-announces its own name below; we do not
+        // broadcast a full roster (which would assert names about other peers).
         // Re-announce my own name so peers learn it after I reload
         const myName = loadMyPeerName(sessionToken);
         if (myName) {
@@ -1284,36 +1279,34 @@ export function usePeerMesh({
                 return;
               case "peer:name": {
                 const { peerId: targetId, name } = message.message;
+                // Security (M1): a peer may only set its own name. Reject claims
+                // about other peers' (or our) names — identity is bound to the
+                // connection, not the message body.
+                if (targetId !== state.peerId) {
+                  return;
+                }
                 peerNamesRef.current = { ...peerNamesRef.current, [targetId]: name };
                 setPeerNames({ ...peerNamesRef.current });
-                // If someone named me, remember it for reconnects
-                if (targetId === localPeerId) {
-                  persistMyPeerName(sessionToken, name);
-                }
                 updateReadyPeerCount();
                 return;
               }
               case "peer:identify": {
                 nextIdentifyFlashIdRef.current += 1;
+                // Security (M1): attribute the ping to the connection peer, not
+                // the (spoofable) id in the message body.
                 setIdentifyFlash({
                   id: nextIdentifyFlashIdRef.current,
-                  fromPeerId: message.message.fromPeerId,
+                  fromPeerId: state.peerId,
                 });
                 return;
               }
               case "peer:names-sync": {
-                const incoming = message.message.names;
-                const nextPeerNames = { ...peerNamesRef.current };
-                let changed = false;
-                for (const [id, name] of Object.entries(incoming)) {
-                  if (nextPeerNames[id] !== name) {
-                    nextPeerNames[id] = name;
-                    changed = true;
-                  }
-                }
-                if (changed) {
-                  peerNamesRef.current = nextPeerNames;
-                  setPeerNames(nextPeerNames);
+                // Security (M1): a peer may only assert its own name; ignore any
+                // names it claims about other peers.
+                const name = message.message.names[state.peerId];
+                if (typeof name === "string" && peerNamesRef.current[state.peerId] !== name) {
+                  peerNamesRef.current = { ...peerNamesRef.current, [state.peerId]: name };
+                  setPeerNames({ ...peerNamesRef.current });
                   updateReadyPeerCount();
                 }
                 return;
@@ -1936,12 +1929,13 @@ export function usePeerMesh({
   const renamePeer = useCallback((peerId: string, name: string) => {
     peerNamesRef.current = { ...peerNamesRef.current, [peerId]: name };
     setPeerNames({ ...peerNamesRef.current });
-    // If I'm being renamed, remember my own name so it survives reload
+    updateReadyPeerCount();
+    // Security (M1): only a self-name is authoritative and broadcast. A label
+    // applied to another peer stays local to this device and is not propagated.
     if (peerId === localPeerId) {
       persistMyPeerName(sessionToken, name);
+      broadcastControlMessage({ type: "peer:name", peerId, name });
     }
-    updateReadyPeerCount();
-    broadcastControlMessage({ type: "peer:name", peerId, name });
   }, [broadcastControlMessage, localPeerId, sessionToken, updateReadyPeerCount]);
 
   return useMemo(() => ({

@@ -1069,18 +1069,20 @@ describe("usePeerMesh", () => {
       secondPeerChannel.open();
     });
 
+    // Security (M1): we no longer broadcast a full roster (which would assert
+    // names about other peers). Each peer self-announces instead.
     const syncMessage = secondPeerChannel.sent
       .map((payload) => JSON.parse(payload as string))
       .find((message) => message.type === "peer:names-sync");
-    expect(syncMessage).toMatchObject({
-      type: "peer:names-sync",
-      names: {
-        "peer-local": "Kitchen iPad",
-        "peer-remote": "Old Tablet",
-      },
-    });
+    expect(syncMessage).toBeUndefined();
 
-    // Own name also sent as peer:name on channel open
+    // The local nickname for peer-remote is never broadcast to others.
+    const remoteNameBroadcast = secondPeerChannel.sent
+      .map((payload) => JSON.parse(payload as string))
+      .find((m) => m.type === "peer:name" && m.peerId === "peer-remote");
+    expect(remoteNameBroadcast).toBeUndefined();
+
+    // Own name IS sent as a self-announce peer:name on channel open.
     const nameMessage = secondPeerChannel.sent
       .map((payload) => JSON.parse(payload as string))
       .find((m) => m.type === "peer:name" && m.peerId === "peer-local");
@@ -2382,7 +2384,7 @@ describe("tombstone recording on incoming delete messages", () => {
     expect(deleteStoredBinaryClipMock).not.toHaveBeenCalled();
   });
 
-  test("peer:name control message for self persists the name", async () => {
+  test("peer:name only sets the sender's own name and ignores claims about others (M1)", async () => {
     randomUuidSpy.mockReturnValue("peer-z");
     const sendPeerSignal = vi.fn(async () => true);
 
@@ -2412,19 +2414,29 @@ describe("tombstone recording on incoming delete messages", () => {
       remoteChannel.open();
     });
 
+    // peer-a naming itself is honored.
     decodeDataChannelMessageMock.mockResolvedValueOnce({
       kind: "control",
-      message: { type: "peer:name", peerId: "peer-z", name: "Named By Remote" },
+      message: { type: "peer:name", peerId: "peer-a", name: "Alice" },
     });
-
     await act(async () => {
-      remoteChannel.message("name-msg");
+      remoteChannel.message("self-name");
       await Promise.resolve();
     });
+    expect(result.current.peerNames["peer-a"]).toBe("Alice");
 
-    expect(result.current.peerNames["peer-z"]).toBe("Named By Remote");
+    // peer-a trying to name another peer (or us) is ignored.
+    decodeDataChannelMessageMock.mockResolvedValueOnce({
+      kind: "control",
+      message: { type: "peer:name", peerId: "peer-z", name: "Hijacked" },
+    });
+    await act(async () => {
+      remoteChannel.message("spoof-name");
+      await Promise.resolve();
+    });
+    expect(result.current.peerNames["peer-z"]).toBeUndefined();
     const tabId = sessionStorage.getItem("elpasto:tab-id:session-1");
-    expect(localStorage.getItem(`elpasto:my-peer-name:session-1:${tabId}`)).toBe("Named By Remote");
+    expect(localStorage.getItem(`elpasto:my-peer-name:session-1:${tabId}`)).toBeNull();
   });
 
   test("peer:identify control message triggers identify flash", async () => {
@@ -2457,9 +2469,11 @@ describe("tombstone recording on incoming delete messages", () => {
       remoteChannel.open();
     });
 
+    // Security (M1): even if the body claims a different id, the flash is
+    // attributed to the peer on the connection (peer-a), not the claimed id.
     decodeDataChannelMessageMock.mockResolvedValueOnce({
       kind: "control",
-      message: { type: "peer:identify", fromPeerId: "peer-a" },
+      message: { type: "peer:identify", fromPeerId: "peer-evil" },
     });
 
     await act(async () => {
@@ -3370,7 +3384,7 @@ describe("tombstone recording on incoming delete messages", () => {
     expect(result.current.peers).toHaveLength(0);
   });
 
-  test("peer:names-sync merges incoming names and skips when unchanged", async () => {
+  test("peer:names-sync only applies the sender's own name, not claims about others (M1)", async () => {
     randomUuidSpy.mockReturnValue("peer-z");
     const sendPeerSignal = vi.fn(async () => true);
 
@@ -3397,7 +3411,7 @@ describe("tombstone recording on incoming delete messages", () => {
       remoteChannel.open();
     });
 
-    // First names-sync with new names
+    // peer-a gossips a roster including a name for itself and for peer-b.
     decodeDataChannelMessageMock.mockResolvedValueOnce({
       kind: "control",
       message: { type: "peer:names-sync", names: { "peer-a": "Alice", "peer-b": "Bob" } },
@@ -3408,22 +3422,9 @@ describe("tombstone recording on incoming delete messages", () => {
       await Promise.resolve();
     });
 
+    // Only peer-a's own name is trusted; its claim about peer-b is ignored.
     expect(result.current.peerNames["peer-a"]).toBe("Alice");
-    expect(result.current.peerNames["peer-b"]).toBe("Bob");
-
-    // Second names-sync with same names (no change)
-    decodeDataChannelMessageMock.mockResolvedValueOnce({
-      kind: "control",
-      message: { type: "peer:names-sync", names: { "peer-a": "Alice", "peer-b": "Bob" } },
-    });
-
-    await act(async () => {
-      remoteChannel.message("sync2");
-      await Promise.resolve();
-    });
-
-    // Still the same (no crash, no unnecessary update)
-    expect(result.current.peerNames["peer-a"]).toBe("Alice");
+    expect(result.current.peerNames["peer-b"]).toBeUndefined();
   });
 
   test("queueLocalBinaryClip infers image kind from file type", async () => {
