@@ -54,10 +54,17 @@ interface LocalTransferClipEntry {
   clip: Clip;
 }
 
+// Security (H3): a peer streams chunks into memory; cap the accumulated bytes
+// per transfer so a malicious or buggy peer cannot exhaust the tab's memory.
+// 2 GiB matches the decoder's declared-size cap, plus slack for encryption
+// overhead and chunk framing.
+export const MAX_DIRECT_TRANSFER_BYTES = 2_147_483_648 + 16 * 1024 * 1024;
+
 interface DirectTransferStoreOptions {
   sessionToken?: string;
   ownerTabId?: string;
   timeoutMs?: number;
+  maxTransferBytes?: number;
 }
 
 interface StartTransferOptions {
@@ -131,6 +138,7 @@ export class DirectTransferStore {
   private readonly emptyLocalClips: Clip[] = [];
   private readonly cachedStats = new Map<string, TransferStats>();
   private readonly timeoutMs: number;
+  private readonly maxTransferBytes: number;
   private readonly sessionToken?: string;
   private readonly ownerTabId?: string;
 
@@ -139,6 +147,7 @@ export class DirectTransferStore {
       ? { timeoutMs: options }
       : options;
     this.timeoutMs = normalized.timeoutMs ?? DIRECT_TRANSFER_TIMEOUT_MS;
+    this.maxTransferBytes = normalized.maxTransferBytes ?? MAX_DIRECT_TRANSFER_BYTES;
     this.sessionToken = normalized.sessionToken;
     this.ownerTabId = normalized.ownerTabId;
   }
@@ -263,6 +272,16 @@ export class DirectTransferStore {
       pending.bytesReceived + payload.byteLength - (existing?.byteLength ?? 0),
       0
     );
+
+    // Security (H3): bound accumulated bytes so a peer cannot exhaust memory by
+    // streaming chunks beyond the declared/permitted size.
+    if (pending.bytesReceived > this.maxTransferBytes) {
+      this.clearPending(transferId);
+      this.markLocalTransferFailed(transferId);
+      this.emit();
+      return;
+    }
+
     pending.lastChunkAt = Date.now();
     this.refreshPending(transferId, pending);
     this.emit();

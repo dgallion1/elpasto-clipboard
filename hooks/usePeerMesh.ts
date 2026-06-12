@@ -6,7 +6,7 @@ import type { SecretHandle } from "@/lib/clip-crypto";
 import type { Clip, ClipZone } from "@/lib/clips";
 import { sortClipsNewestFirst } from "@/lib/clips";
 import {
-  addTombstone,
+  addTombstone as persistTombstone,
   adoptOrphanedClips,
   deleteStoredBinaryClip,
   getStoredBinaryClip,
@@ -36,6 +36,7 @@ import {
   type DirectTransferControlMessage,
 } from "@/lib/webrtc";
 import { regenerateHtmlFromPlainText } from "@/lib/html-utils";
+import { mayAcceptClipStart, mayDeleteClip, mayReplaceClip } from "@/lib/peer-authz";
 
 function createRandomId(prefix: string): string {
   try {
@@ -300,6 +301,13 @@ export function usePeerMesh({
   const localBinaryListenersRef = useRef(new Set<() => void>());
   const tunnelMessageListenersRef = useRef(new Set<(peerId: string, data: string | ArrayBuffer) => void>());
   const transferOwnersRef = useRef(new Map<string, string>());
+  // Security (H2/H4): the peer whose clip:start we accepted for each transfer.
+  // Only that peer may later replace or delete/tombstone the clip.
+  const transferSourceRef = useRef(new Map<string, string>());
+  // Security (H4a): in-memory mirror of this session's tombstones so the direct
+  // clip:start path can reject resurrection synchronously (an async IndexedDB read
+  // here would delay startTransfer and drop the sender's first chunks).
+  const tombstonedTransferIdsRef = useRef(new Set<string>());
   const transferRequestTimeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const nextLocalBinaryClipIdRef = useRef(-1);
   const localBinarySnapshotRef = useRef<Record<string, Clip[]>>({});
@@ -311,6 +319,13 @@ export function usePeerMesh({
   const onThreadRenamedRef = useRef(onThreadRenamed);
   const onThreadReorderedRef = useRef(onThreadReordered);
   const onThreadDeletedRef = useRef(onThreadDeleted);
+
+  // Security (H2/H4a): persist a tombstone and mirror it in memory so the
+  // synchronous clip:start resurrection check sees it immediately.
+  const recordTombstone = useCallback((transferId: string) => {
+    tombstonedTransferIdsRef.current.add(transferId);
+    void persistTombstone(transferId, sessionToken);
+  }, [sessionToken]);
 
   useEffect(() => {
     getCurrentUnlockSecretRef.current = getCurrentUnlockSecret;
@@ -771,6 +786,7 @@ export function usePeerMesh({
       listStoredBinaryClipMetadataBySession(sessionToken, ownerTabId),
       getTombstones(sessionToken),
     ]);
+    for (const id of tombstones) tombstonedTransferIdsRef.current.add(id);
     const deletedThreadIds = new Set(
       (getThreadRecordsRef.current?.() ?? [])
         .filter((thread) => thread.deletedAt != null)
@@ -836,6 +852,7 @@ export function usePeerMesh({
     // decide which clips need data from the peer.
     await restoreReadyRef.current?.promise;
     const tombstones = await getTombstones(sessionToken);
+    for (const id of tombstones) tombstonedTransferIdsRef.current.add(id);
     const threadRecords = getThreadRecordsRef.current?.() ?? [];
     const deletedThreadIds = new Set(
       threadRecords
@@ -866,7 +883,7 @@ export function usePeerMesh({
           sessionToken,
         });
         void deleteStoredBinaryClip(clip.transferId, ownerTabId);
-        void addTombstone(clip.transferId, sessionToken);
+        recordTombstone(clip.transferId);
         storeRef.current?.removeLocalClip(clip.transferId);
         tombstonedIds.push(clip.transferId);
         continue;
@@ -1002,7 +1019,7 @@ export function usePeerMesh({
         senderClipsRemoved = true;
         void deleteStoredBinaryClip(transferId, ownerTabId);
       }
-      void addTombstone(transferId, sessionToken);
+      recordTombstone(transferId);
     }
 
     storeRef.current?.clearLocalClips(threadId);
@@ -1096,20 +1113,49 @@ export function usePeerMesh({
             event.data as string | ArrayBuffer | Blob | ArrayBufferView
           );
 
+          if (message.kind === "invalid") {
+            // Security (H1): a peer sent a malformed/oversized/unknown control
+            // message; it was rejected at the decode boundary. Drop it.
+            return;
+          }
+
           if (message.kind === "control") {
             switch (message.message.type) {
-              case "clip:start":
-                if (!acceptTransferOwner(message.message.envelope.transferId, state.peerId)) {
+              case "clip:start": {
+                const tid = message.message.envelope.transferId;
+                // Security (H4a): never resurrect a clip deleted this session.
+                if (!mayAcceptClipStart({ tombstoned: tombstonedTransferIdsRef.current.has(tid) })) {
                   return;
                 }
-                storeRef.current?.startTransfer(message.message.envelope);
+                if (!acceptTransferOwner(tid, state.peerId)) {
+                  return;
+                }
+                // Security (H2/H4): bind the clip to the peer that delivered it,
+                // but only when the transfer is actually (re)started so a peer
+                // cannot hijack source by re-announcing an existing clip.
+                if (storeRef.current?.startTransfer(message.message.envelope)) {
+                  transferSourceRef.current.set(tid, state.peerId);
+                }
                 return;
-              case "clip:update":
-                if (!acceptTransferOwner(message.message.envelope.transferId, state.peerId)) {
+              }
+              case "clip:update": {
+                const tid = message.message.envelope.transferId;
+                // Security (H4b): only the peer that delivered the clip may replace
+                // it, and never onto a tombstoned id — blocks swapping a benign clip
+                // for a malicious one (which would feed the html-render XSS).
+                if (!mayReplaceClip({
+                  sourcePeerId: transferSourceRef.current.get(tid),
+                  senderPeerId: state.peerId,
+                  tombstoned: tombstonedTransferIdsRef.current.has(tid),
+                })) {
+                  return;
+                }
+                if (!acceptTransferOwner(tid, state.peerId)) {
                   return;
                 }
                 storeRef.current?.startTransfer(message.message.envelope, { replaceExisting: true });
                 return;
+              }
               case "clip:end": {
                 const transferId = message.message.transferId;
                 await storeRef.current?.finishTransfer(
@@ -1123,9 +1169,16 @@ export function usePeerMesh({
               }
               case "clip:delete": {
                 const tid = message.message.transferId;
+                // Security (H2): only the peer that delivered the clip may delete
+                // and tombstone it for us — stops a peer wiping clips it merely
+                // learned about (e.g. from another peer's catalog).
+                if (!mayDeleteClip({ sourcePeerId: transferSourceRef.current.get(tid), senderPeerId: state.peerId })) {
+                  return;
+                }
                 releaseTransferOwner(tid);
+                transferSourceRef.current.delete(tid);
                 storeRef.current?.removeLocalClip(tid);
-                void addTombstone(tid, sessionToken);
+                recordTombstone(tid);
                 const senderEntry = localBinaryClipsRef.current.get(tid);
                 if (senderEntry) {
                   localBinaryClipsRef.current.delete(tid);
@@ -1138,9 +1191,14 @@ export function usePeerMesh({
               case "clips:clear": {
                 let senderClipsRemoved = false;
                 for (const transferId of message.message.transferIds) {
+                  // Security (H2): only clear ids this peer actually delivered.
+                  if (!mayDeleteClip({ sourcePeerId: transferSourceRef.current.get(transferId), senderPeerId: state.peerId })) {
+                    continue;
+                  }
                   releaseTransferOwner(transferId);
+                  transferSourceRef.current.delete(transferId);
                   storeRef.current?.removeLocalClip(transferId);
-                  void addTombstone(transferId, sessionToken);
+                  recordTombstone(transferId);
                   const senderEntry = localBinaryClipsRef.current.get(transferId);
                   if (senderEntry) {
                     localBinaryClipsRef.current.delete(transferId);
@@ -1263,11 +1321,13 @@ export function usePeerMesh({
             }
           }
 
-          storeRef.current?.appendChunk(
-            message.transferId,
-            message.index,
-            message.payload
-          );
+          if (message.kind === "chunk") {
+            storeRef.current?.appendChunk(
+              message.transferId,
+              message.index,
+              message.payload
+            );
+          }
         })().catch((error) => {
           console.error("Failed to process peer message", error);
         });
@@ -1278,6 +1338,7 @@ export function usePeerMesh({
       handleCatalogOffer,
       acceptTransferOwner,
       clearThreadClipsFromRemoteDelete,
+      recordTombstone,
       releaseTransferOwner,
       reserveTransferOwner,
       scheduleReannounce,
@@ -1613,10 +1674,10 @@ export function usePeerMesh({
       localBinaryClipIdsRef.current.delete(existing.clip.id);
       emitLocalBinaryClips();
       void deleteStoredBinaryClip(transferId, ownerTabId);
-      void addTombstone(transferId, sessionToken);
+      recordTombstone(transferId);
       broadcastControlMessage({ type: "clip:delete", transferId });
     },
-    [broadcastControlMessage, emitLocalBinaryClips, ownerTabId]
+    [broadcastControlMessage, emitLocalBinaryClips, ownerTabId, recordTombstone]
   );
 
   const clearLocalBinaryClips = useCallback(
@@ -1637,13 +1698,13 @@ export function usePeerMesh({
         localBinaryClipsRef.current.delete(transferId);
         localBinaryClipIdsRef.current.delete(entry.clip.id);
         void deleteStoredBinaryClip(transferId, ownerTabId);
-        void addTombstone(transferId, sessionToken);
+        recordTombstone(transferId);
       }
 
       emitLocalBinaryClips();
       broadcastControlMessage({ type: "clips:clear", transferIds, zone });
     },
-    [broadcastControlMessage, emitLocalBinaryClips, ownerTabId]
+    [broadcastControlMessage, emitLocalBinaryClips, ownerTabId, recordTombstone]
   );
 
   const attachCanonicalClip = useCallback((clip: Clip) => {
@@ -1670,6 +1731,7 @@ export function usePeerMesh({
         getTombstones(sessionToken),
       ])
     ).then(async ([allRecords, tombstones]) => {
+      for (const id of tombstones) tombstonedTransferIdsRef.current.add(id);
       // Filter out tombstoned clips — they were deleted in a prior session
       // and should not be restored or re-advertised.
       let records = allRecords.filter((r) => !tombstones.has(r.transferId));
@@ -1912,7 +1974,7 @@ export function usePeerMesh({
     readyPeerCount,
     renamePeer,
     broadcastClipDelete: (transferId: string) => {
-      void addTombstone(transferId, sessionToken);
+      recordTombstone(transferId);
       broadcastControlMessage({ type: "clip:delete", transferId });
     },
     broadcastThreadCreated: (thread: ThreadRecord) =>

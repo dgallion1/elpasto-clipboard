@@ -1573,6 +1573,17 @@ describe("tombstone recording on incoming delete messages", () => {
       channel.open();
     });
 
+    // Security (H2): a peer may only delete a clip it delivered to us. Deliver
+    // it first so this peer is the recognized source.
+    decodeDataChannelMessageMock.mockResolvedValueOnce({
+      kind: "control",
+      message: { type: "clip:start", envelope: { ...envelope, transferId: "deleted-transfer" } },
+    });
+    await act(async () => {
+      channel.message("clip-start-msg");
+      await Promise.resolve();
+    });
+
     addTombstoneMock.mockReset();
 
     decodeDataChannelMessageMock.mockResolvedValueOnce({
@@ -1587,6 +1598,53 @@ describe("tombstone recording on incoming delete messages", () => {
     });
 
     expect(addTombstoneMock).toHaveBeenCalledWith("deleted-transfer", "session-1");
+  });
+
+  test("incoming clip:delete from a peer that never delivered the clip is ignored (H2)", async () => {
+    randomUuidSpy.mockReturnValue("peer-local");
+    const sendPeerSignal = vi.fn(async () => true);
+
+    const { result } = renderHook(() =>
+      usePeerMesh({
+        enabled: true,
+        sessionToken: "session-1",
+        signalingReady: true,
+        sendPeerSignal,
+        getCurrentUnlockSecret: getCurrentUnlockSecretMock,
+      })
+    );
+
+    await act(async () => {
+      await result.current.handlePeerSignal({
+        fromPeerId: "peer-remote",
+        signalType: "announce",
+      });
+    });
+
+    const [peerConnection] = peerConnections;
+    const channel = new FakeDataChannel();
+    await act(async () => {
+      peerConnection.trigger("datachannel", {
+        channel: channel as unknown as RTCDataChannel,
+      });
+      channel.open();
+    });
+
+    addTombstoneMock.mockReset();
+
+    // The peer only learned the transferId (e.g. from another peer's catalog);
+    // it never delivered the clip, so it must not be able to delete/tombstone it.
+    decodeDataChannelMessageMock.mockResolvedValueOnce({
+      kind: "control",
+      message: { type: "clip:delete", transferId: "not-ours-to-delete" },
+    });
+
+    await act(async () => {
+      channel.message("clip-delete-msg");
+      await Promise.resolve();
+    });
+
+    expect(addTombstoneMock).not.toHaveBeenCalled();
   });
 
   test("incoming clips:clear records tombstones for each transfer id", async () => {
@@ -1617,6 +1675,22 @@ describe("tombstone recording on incoming delete messages", () => {
         channel: channel as unknown as RTCDataChannel,
       });
       channel.open();
+    });
+
+    // Security (H2): deliver both clips first so this peer is their source.
+    decodeDataChannelMessageMock.mockResolvedValueOnce({
+      kind: "control",
+      message: { type: "clip:start", envelope: { ...envelope, transferId: "dead-1" } },
+    });
+    decodeDataChannelMessageMock.mockResolvedValueOnce({
+      kind: "control",
+      message: { type: "clip:start", envelope: { ...envelope, transferId: "dead-2" } },
+    });
+    await act(async () => {
+      channel.message("start-1");
+      await Promise.resolve();
+      channel.message("start-2");
+      await Promise.resolve();
     });
 
     addTombstoneMock.mockReset();
@@ -2407,7 +2481,7 @@ describe("tombstone recording on incoming delete messages", () => {
     expect(result.current.identifyFlash).toBeNull();
   });
 
-  test("clip:delete control message removes sender entry from local binary clips", async () => {
+  test("clip:delete from a non-originator peer does not remove our own sender clip (H2)", async () => {
     randomUuidSpy.mockReturnValue("peer-z");
     const sendPeerSignal = vi.fn(async () => true);
 
@@ -2459,11 +2533,13 @@ describe("tombstone recording on incoming delete messages", () => {
       await Promise.resolve();
     });
 
-    expect(result.current.getLocalBinaryClipsByZone("A")).toHaveLength(0);
-    expect(deleteStoredBinaryClipMock).toHaveBeenCalledWith("transfer-del", "peer-z");
+    // Security (H2): we authored this clip, so a peer that never delivered it
+    // cannot delete it for us — it stays put and is not removed from storage.
+    expect(result.current.getLocalBinaryClipsByZone("A")).toHaveLength(1);
+    expect(deleteStoredBinaryClipMock).not.toHaveBeenCalled();
   });
 
-  test("clips:clear control message removes sender entries from local binary clips", async () => {
+  test("clips:clear from a non-originator peer does not remove our own sender clips (H2)", async () => {
     randomUuidSpy.mockReturnValue("peer-z");
     const sendPeerSignal = vi.fn(async () => true);
 
@@ -2519,9 +2595,10 @@ describe("tombstone recording on incoming delete messages", () => {
       await Promise.resolve();
     });
 
-    expect(result.current.getLocalBinaryClipsByZone("A")).toHaveLength(0);
-    expect(deleteStoredBinaryClipMock).toHaveBeenCalledWith("transfer-c1", "peer-z");
-    expect(deleteStoredBinaryClipMock).toHaveBeenCalledWith("transfer-c2", "peer-z");
+    // Security (H2): a peer that never delivered these clips cannot clear the
+    // ones we authored.
+    expect(result.current.getLocalBinaryClipsByZone("A")).toHaveLength(2);
+    expect(deleteStoredBinaryClipMock).not.toHaveBeenCalled();
   });
 
   test("threads:sync control message invokes onThreadsSync callback", async () => {

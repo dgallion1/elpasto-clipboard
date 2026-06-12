@@ -113,6 +113,20 @@ describe("DirectTransferStore", () => {
     expect(store.getClipCiphertext(55)).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6]));
   });
 
+  test("aborts a transfer that streams more than the byte ceiling (H3)", () => {
+    // A malicious peer can stream unlimited chunks regardless of declared size;
+    // accumulation must be bounded so it cannot exhaust memory.
+    const store = new DirectTransferStore({ timeoutMs: 1_000, maxTransferBytes: 10 });
+    store.startTransfer(envelope);
+    store.appendChunk("transfer-1", 0, new Uint8Array(6));
+    expect(store.getLocalTransferState("transfer-1")).toBe("pending");
+    store.appendChunk("transfer-1", 1, new Uint8Array(6)); // 12 > 10 → abort
+    expect(store.getLocalTransferState("transfer-1")).toBe("failed");
+    // Pending state is dropped, so further chunks are ignored (no accumulation).
+    store.appendChunk("transfer-1", 2, new Uint8Array(6));
+    expect(store.getLocalTransferState("transfer-1")).toBe("failed");
+  });
+
   test("reconciles when the canonical clip arrives before completion", () => {
     const store = new DirectTransferStore(1_000);
     store.attachClip({ id: 88, client_transfer_id: "transfer-1" } as const);
