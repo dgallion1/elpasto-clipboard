@@ -3328,3 +3328,26 @@ func TestCreateSessionAtCapacityIntegration(t *testing.T) {
 // - lines 91-93: subscription channel close (!ok) (unreachable in current broker design)
 // - lines 94-96: writeSSEEvent error during subscription event (requires write failure)
 
+
+func TestSecurityHeadersOnAPIResponses(t *testing.T) {
+	app, err := New(config.Config{
+		DataDir:            t.TempDir(),
+		SessionExpiryHours: 24,
+		CleanupInterval:    10 * time.Millisecond,
+	}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer app.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+	if got := rec.Header().Get("Referrer-Policy"); got == "" {
+		t.Error("Referrer-Policy should be set on API responses")
+	}
+}

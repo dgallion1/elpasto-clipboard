@@ -232,5 +232,5 @@ func (s *Server) routes() http.Handler {
 }
 
 func (s *Server) withMiddleware(next http.Handler) http.Handler {
-	return s.recoverMiddleware(s.logMiddleware(s.statsMiddleware(s.corsMiddleware(next))))
+	return s.recoverMiddleware(s.logMiddleware(s.statsMiddleware(s.corsMiddleware(s.securityHeadersMiddleware(next)))))
 }
