@@ -717,11 +717,13 @@ func TestValidateSessionExpiry(t *testing.T) {
 	}{
 		{"default 24h", 24, false},
 		{"minimum 1h", 1, false},
-		{"maximum one year", 8760, false},
+		{"one year", 8760, false},
+		{"ten years (effectively permanent)", 87600, false},
+		{"max overflow-safe value", maxSessionExpiryHours, false},
 		{"zero rejected", 0, true},
 		{"negative rejected", -1, true},
-		{"over a year rejected", 8761, true},
-		{"overflow value rejected", 9223372036854, true},
+		{"one past the overflow-safe max rejected", maxSessionExpiryHours + 1, true},
+		{"huge overflow value rejected", 9223372036854, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

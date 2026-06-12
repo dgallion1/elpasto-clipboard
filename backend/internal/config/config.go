@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -132,10 +133,12 @@ func (c Config) ValidateTunnelAuth() error {
 }
 
 const (
-	// maxSessionExpiryHours bounds SESSION_EXPIRY_HOURS to one year. Beyond this
-	// the time.Duration(hours) * time.Hour computation can overflow int64
-	// nanoseconds and silently wrap to a tiny/negative duration.
-	maxSessionExpiryHours = 8760
+	// maxSessionExpiryHours is the largest SESSION_EXPIRY_HOURS that does not
+	// overflow time.Duration (int64 nanoseconds) when multiplied by time.Hour.
+	// Above this, the expiry computation silently wraps to a tiny/negative
+	// duration. This is ~292 years, so any realistic "effectively permanent"
+	// retention is allowed; only genuinely overflow-prone values are rejected.
+	maxSessionExpiryHours = int(math.MaxInt64 / int64(time.Hour))
 	// Minimum lengths for operator secrets so a weak value can't undermine the
 	// HMAC-keyed tunnel auth gate or the stats dashboard.
 	minTunnelAuthSecretLen  = 32
