@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import DOMPurify from "dompurify";
 import type { Clip } from "@/lib/clips";
 import {
   ClipCryptoError,
@@ -71,12 +72,33 @@ const DANGEROUS_HTML_BLOCK_REGEX = new RegExp(
 const DANGEROUS_HTML_SINGLE_TAG_REGEX =
   /<\s*(base|embed|frame|frameset|img|source)\b[^>]*\/?>/gi;
 
+const SAFE_HTML_ATTRIBUTES = ["href", "title", "target", "rel", "colspan", "rowspan"];
+
+// Parser-based pre-pass. DOMPurify sanitizes using the real HTML parser, so —
+// unlike the regex normalization below — it cannot be fooled by malformed tags
+// such as `<svg/onload=…>` or `<image/src=x/onerror=…>` that slip past a
+// whitespace-anchored tokenizer. Restricted to the same tag/attribute allowlist
+// the normalization pass enforces, so anything outside it is gone before the
+// markup ever reaches dangerouslySetInnerHTML.
+// Security (C1): html-kind clips render peer-supplied html_content as markup.
+function purifyPreviewHtml(html: string): string {
+  if (typeof window === "undefined") {
+    // No DOM available (SSR): render nothing; the client re-sanitizes on hydration.
+    return "";
+  }
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: Array.from(SAFE_HTML_TAGS),
+    ALLOWED_ATTR: SAFE_HTML_ATTRIBUTES,
+    ALLOW_DATA_ATTR: false,
+  });
+}
+
 export function sanitizePreviewHtml(html: string): string {
   if (!html) {
     return "";
   }
 
-  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
+  const withoutComments = purifyPreviewHtml(html).replace(/<!--[\s\S]*?-->/g, "");
   const withoutDangerousBlocks = withoutComments
     .replace(DANGEROUS_HTML_BLOCK_REGEX, "")
     .replace(DANGEROUS_HTML_SINGLE_TAG_REGEX, "");
