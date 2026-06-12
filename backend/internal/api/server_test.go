@@ -3351,3 +3351,27 @@ func TestSecurityHeadersOnAPIResponses(t *testing.T) {
 		t.Error("Referrer-Policy should be set on API responses")
 	}
 }
+
+func TestGetSessionIsRateLimited(t *testing.T) {
+	app, err := New(config.Config{
+		DataDir:            t.TempDir(),
+		SessionExpiryHours: 24,
+		CleanupInterval:    10 * time.Millisecond,
+	}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer app.Close()
+
+	// All requests come from the same RemoteAddr, so they share a bucket.
+	var lastCode int
+	for i := 0; i < viewRateLimitPerMinute+1; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/api/sessions/no-such-token-here-friend", nil)
+		rec := httptest.NewRecorder()
+		app.Handler().ServeHTTP(rec, req)
+		lastCode = rec.Code
+	}
+	if lastCode != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 after exceeding the view rate limit, got %d", lastCode)
+	}
+}
