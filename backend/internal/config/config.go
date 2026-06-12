@@ -35,6 +35,7 @@ type Config struct {
 	RateLimitTunnelAuthStartsPerHour    int
 	RateLimitTunnelAuthCallbacksPerHour int
 	TunnelBaseURL                       string
+	TunnelAuthPublicURL                 string
 	StatsDashboardKey                   string
 	PlausibleScriptURL string
 	PlausibleEventURL  string
@@ -73,6 +74,7 @@ func FromEnv() Config {
 		RateLimitTunnelAuthStartsPerHour:    getenvInt("RATE_LIMIT_TUNNEL_AUTH_STARTS_PER_HOUR", 10),
 		RateLimitTunnelAuthCallbacksPerHour: getenvInt("RATE_LIMIT_TUNNEL_AUTH_CALLBACKS_PER_HOUR", 30),
 		TunnelBaseURL:                       getenv("TUNNEL_BASE_URL", ""),
+		TunnelAuthPublicURL:                 getenv("TUNNEL_AUTH_PUBLIC_URL", ""),
 		StatsDashboardKey:                   getenv("STATS_DASHBOARD_KEY", ""),
 		PlausibleScriptURL: os.Getenv("PLAUSIBLE_SCRIPT_URL"),
 		PlausibleEventURL:  getenv("PLAUSIBLE_EVENT_URL", ""),

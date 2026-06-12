@@ -93,6 +93,7 @@ func New(cfg config.Config, logger *log.Logger) (*Server, error) {
 			AllowedEmails:     emailSet,
 			AllowedDomains:    domainSet,
 			TrustProxyHeaders: cfg.TrustProxyHeaders,
+			PublicBaseURL:     cfg.TunnelAuthPublicURL,
 		}, nil, logger)
 		if err != nil {
 			return nil, fmt.Errorf("server: tunnel auth: %w", err)

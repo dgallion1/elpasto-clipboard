@@ -48,6 +48,9 @@ SSH = ssh
 #   GOOGLE_OAUTH_CLIENT_ID = ...apps.googleusercontent.com
 #   GOOGLE_OAUTH_CLIENT_SECRET = ...
 #   TUNNEL_AUTH_ALLOWED_EMAILS = you@example.com,teammate@example.com
+# Recommended: pin the OAuth callback origin so a spoofed Host header can't
+# influence the redirect_uri (must match the URI registered in Google console):
+#   TUNNEL_AUTH_PUBLIC_URL = https://elpasto.app
 #   RATE_LIMIT_CREATE_PER_HOUR = 40
 #
 # Caveat: values containing $, `, ", or \ should be avoided — only "'" is
