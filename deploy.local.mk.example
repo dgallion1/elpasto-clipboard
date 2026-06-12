@@ -35,9 +35,10 @@ SSH = ssh
 #   TURN_REALM = your-turn-domain.example
 #   TURN_EXTERNAL_IP = 1.2.3.4
 #
-# Session expiry (hours). Default is 24; valid range is 1..8760 (one year).
-# The server rejects values outside this range at startup.
-#   SESSION_EXPIRY_HOURS = 8760
+# Session expiry (hours). Default is 24. Must be >= 1; the only upper bound is
+# the overflow-safe maximum (~292 years), so large "effectively permanent"
+# values like 87600 (10 years) are fine. Zero/negative values are rejected.
+#   SESSION_EXPIRY_HOURS = 87600
 #
 # Secrets must meet a minimum length (enforced at startup): STATS_DASHBOARD_KEY
 # >= 16 chars, TUNNEL_AUTH_SECRET >= 32 chars. Generate strong values, e.g.:
