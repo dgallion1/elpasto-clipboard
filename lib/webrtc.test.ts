@@ -138,6 +138,13 @@ describe("decodeDataChannelMessage", () => {
     });
   });
 
+  test("rejects malformed control messages from peers (H1)", async () => {
+    // Unknown type, wrong field shape, and non-JSON must not reach the dispatcher.
+    expect(await decodeDataChannelMessage(JSON.stringify({ type: "evil:exec" }))).toEqual({ kind: "invalid" });
+    expect(await decodeDataChannelMessage(JSON.stringify({ type: "clip:delete", transferId: 5 }))).toEqual({ kind: "invalid" });
+    expect(await decodeDataChannelMessage("not json at all")).toEqual({ kind: "invalid" });
+  });
+
   test("accepts ArrayBufferView (Uint8Array with offset) payloads", async () => {
     const frame = createChunkFrame("transfer-view", 3, new Uint8Array([5, 6]));
     const frameBytes = new Uint8Array(frame);

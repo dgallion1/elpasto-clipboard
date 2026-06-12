@@ -10,6 +10,7 @@ import type { BinaryClipCatalogEntry } from "@/lib/clip-store";
 import type { ClipZone } from "@/lib/clips";
 import type { ThreadRecord } from "@/lib/threads";
 import type { TurnCredentials } from "@/app/[token]/session-page-types";
+import { parseControlMessage } from "@/lib/peer-message";
 
 export const DIRECT_TRANSFER_BUFFERED_AMOUNT_HIGH_WATERMARK = 256 * 1024;
 const DIRECT_TRANSFER_BUFFERED_AMOUNT_LOW_WATERMARK = 64 * 1024;
@@ -80,10 +81,13 @@ export async function decodeDataChannelMessage(
 ): Promise<
   | { kind: "control"; message: DirectTransferControlMessage }
   | { kind: "chunk"; transferId: string; index: number; payload: Uint8Array }
+  | { kind: "invalid" }
 > {
   if (typeof data === "string") {
-    const message = JSON.parse(data) as DirectTransferControlMessage;
-    return { kind: "control", message };
+    // Security (H1): validate and bound peer-supplied control JSON before the
+    // dispatcher acts on it. Malformed/unknown/oversized messages are dropped.
+    const message = parseControlMessage(data);
+    return message ? { kind: "control", message } : { kind: "invalid" };
   }
 
   const buffer = await toArrayBuffer(data);

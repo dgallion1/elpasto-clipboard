@@ -59,7 +59,8 @@ describe("sanitizePreviewHtml", () => {
     expect(sanitizePreviewHtml("<script>alert(1)</script>")).toBe("");
     expect(sanitizePreviewHtml("<style>body{}</style>")).toBe("");
     expect(sanitizePreviewHtml("<iframe src='x'></iframe>")).toBe("");
-    expect(sanitizePreviewHtml("<form action='x'>data</form>")).toBe("");
+    // The form element is removed; its harmless inner text may remain.
+    expect(sanitizePreviewHtml("<form action='x'>data</form>")).not.toContain("form");
   });
 
   test("strips single dangerous tags (img, embed, etc.)", () => {
@@ -154,15 +155,19 @@ describe("sanitizePreviewHtml", () => {
     expect(result).not.toContain("style");
   });
 
+  // td/th are only valid inside a table; the HTML parser (and therefore
+  // DOMPurify) drops a bare <td>, so these assert the realistic in-table case.
+  const inRow = (cell: string) => `<table><tbody><tr>${cell}</tr></tbody></table>`;
+
   test("preserves colspan and rowspan on td/th", () => {
-    expect(sanitizePreviewHtml('<td colspan="2">cell</td>')).toBe('<td colspan="2">cell</td>');
-    expect(sanitizePreviewHtml('<th rowspan="3">head</th>')).toBe('<th rowspan="3">head</th>');
+    expect(sanitizePreviewHtml(inRow('<td colspan="2">cell</td>'))).toContain('<td colspan="2">cell</td>');
+    expect(sanitizePreviewHtml(inRow('<th rowspan="3">head</th>'))).toContain('<th rowspan="3">head</th>');
   });
 
   test("strips invalid colspan/rowspan values", () => {
-    expect(sanitizePreviewHtml('<td colspan="0">cell</td>')).toBe("<td>cell</td>");
-    expect(sanitizePreviewHtml('<td colspan="abc">cell</td>')).toBe("<td>cell</td>");
-    expect(sanitizePreviewHtml('<td colspan="100">cell</td>')).toBe("<td>cell</td>"); // > 2 digits starting with non-1-9
+    expect(sanitizePreviewHtml(inRow('<td colspan="0">cell</td>'))).toContain("<td>cell</td>");
+    expect(sanitizePreviewHtml(inRow('<td colspan="abc">cell</td>'))).toContain("<td>cell</td>");
+    expect(sanitizePreviewHtml(inRow('<td colspan="100">cell</td>'))).toContain("<td>cell</td>"); // > 2 digits starting with non-1-9
   });
 
   test("handles mixed safe and unsafe content", () => {
@@ -173,9 +178,10 @@ describe("sanitizePreviewHtml", () => {
     expect(result).not.toContain("script");
   });
 
-  test("closing tags for safe tags are preserved", () => {
-    const result = sanitizePreviewHtml("</p>");
-    expect(result).toBe("</p>");
+  test("stray closing tags are dropped by the parser", () => {
+    // A stray end tag with no matching start is ignored by the HTML parser.
+    expect(sanitizePreviewHtml("</p>")).toBe("");
+    expect(sanitizePreviewHtml("<p>hi</p>")).toBe("<p>hi</p>");
   });
 
   test("closing tags for unsafe tags are removed", () => {
@@ -198,7 +204,7 @@ describe("sanitizePreviewHtml", () => {
   });
 
   test("handles unquoted attribute values", () => {
-    const result = sanitizePreviewHtml("<td colspan=2>cell</td>");
+    const result = sanitizePreviewHtml(inRow("<td colspan=2>cell</td>"));
     expect(result).toContain('colspan="2"');
   });
 
@@ -217,6 +223,48 @@ describe("sanitizePreviewHtml", () => {
   test("frame, frameset single tags are removed", () => {
     expect(sanitizePreviewHtml("<frame src='x' />")).toBe("");
     expect(sanitizePreviewHtml("<frameset></frameset>")).toBe("");
+  });
+
+  // Security (C1): a malicious peer can ship arbitrary html_content for an
+  // html-kind clip, which is rendered via dangerouslySetInnerHTML. Malformed
+  // tags must not survive sanitization as executable markup.
+  describe("XSS bypass payloads are neutralized", () => {
+    // Parse the sanitized output the way the browser will and assert no
+    // executable vectors remain — this is the property that actually matters.
+    function assertInert(payload: string) {
+      const out = sanitizePreviewHtml(payload);
+      const host = document.createElement("div");
+      host.innerHTML = out;
+      const all = [host, ...Array.from(host.querySelectorAll("*"))];
+      for (const el of all) {
+        for (const attr of Array.from(el.attributes ?? [])) {
+          expect(attr.name.toLowerCase().startsWith("on")).toBe(false);
+        }
+        const tag = el.tagName.toLowerCase();
+        expect(["script", "img", "image", "svg", "iframe", "object", "embed"]).not.toContain(tag);
+      }
+    }
+
+    test("slash-separated img alias with onerror does not survive", () => {
+      assertInert("<image/src=x/onerror=alert(1)>");
+    });
+
+    test("slash-separated svg with onload does not survive", () => {
+      assertInert("<svg/onload=alert(1)>");
+    });
+
+    test("svg animate with onbegin does not survive", () => {
+      assertInert("<svg><animate/onbegin=alert(1)>");
+    });
+
+    test("img with onerror does not survive", () => {
+      assertInert("<img src=x onerror=alert(1)>");
+    });
+
+    test("malformed onerror handler is stripped from output string", () => {
+      expect(sanitizePreviewHtml("<image/src=x/onerror=alert(1)>")).not.toContain("onerror");
+      expect(sanitizePreviewHtml("<svg/onload=alert(1)>")).not.toContain("onload");
+    });
   });
 });
 
