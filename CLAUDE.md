@@ -19,6 +19,7 @@
 - Go tests: `cd backend && go test ./...` or `make go-backend-test`
 - Go quality: `make go-check` (vet → staticcheck → govulncheck → test → race)
 - Go coverage: `cd backend && go test ./... -coverpkg=./... -coverprofile=coverage.out && go tool cover -func=coverage.out`
+- Never filter test output through a pipeline like `pnpm vitest run 2>&1 | grep -iE "PASS|FAIL" | head` or `go test ./... 2>&1 | grep FAIL | head` — the pipe reports the last command's exit code, so a failing suite reads as exit 0 (this masked 10 red vitest runs in one session). Run tests bare; if trimming output, prefix `set -o pipefail;`
 - Pre-commit hook runs `make check` (type-check + lint + vitest + full Go pipeline)
 - Prefer real handler/store/tempdir tests over heavy mocking
 - Data stored in `./data/` (gitignored)
