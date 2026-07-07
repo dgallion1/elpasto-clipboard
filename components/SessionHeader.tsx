@@ -29,7 +29,6 @@ interface SessionHeaderProps {
   token: string;
   hasUnlockSecret: boolean;
   secretMode?: "normal" | "paranoid" | null;
-  directPeerCount: number;
   connectionState: ConnectionState;
   localPeerId: string;
   peerNames: Record<string, string>;

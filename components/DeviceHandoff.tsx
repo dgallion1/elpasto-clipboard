@@ -15,6 +15,8 @@ interface DeviceHandoffProps {
 const dismissKey = (token: string) => `elpasto:handoff-dismissed:${token}`;
 
 export function DeviceHandoff({ state, sessionUrl, token, hasClips }: DeviceHandoffProps) {
+  // Safe to read sessionStorage during init: DeviceHandoff only mounts
+  // client-side, after SessionPageView's `loading` gate — never during SSR.
   const [dismissed, setDismissed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     try {
