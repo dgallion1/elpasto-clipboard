@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { QRCode } from "./QRCode";
 
 interface QRCodeModalProps {
   open: boolean;
@@ -11,31 +12,13 @@ interface QRCodeModalProps {
 export function QRCodeModal({ open, onClose, url }: QRCodeModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const [urlCopied, setUrlCopied] = useState(false);
-  const [QRCodeSVG, setQRCodeSVG] = useState<null | React.ComponentType<{
-    value: string;
-    size: number;
-    level: "L" | "M" | "Q" | "H";
-    includeMargin: boolean;
-    bgColor: string;
-    fgColor: string;
-  }>>(null);
 
+  // Clear the "Copied!" flag when the dialog closes (or unmounts) so a later
+  // reopen starts fresh. Done in cleanup rather than a synchronous setState in
+  // the effect body, which would trigger a cascading render.
   useEffect(() => {
-    let cancelled = false;
-
-    void import("qrcode.react").then((module) => {
-      if (!cancelled) {
-        setQRCodeSVG(() => module.QRCodeSVG);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!open) setUrlCopied(false);
+    if (!open) return;
+    return () => setUrlCopied(false);
   }, [open]);
 
   const copyUrl = useCallback(async () => {
@@ -124,16 +107,7 @@ export function QRCodeModal({ open, onClose, url }: QRCodeModalProps) {
 
         <div className="space-y-3">
           <div className="flex justify-center rounded-lg bg-neutral-950 p-5">
-            {QRCodeSVG ? (
-              <QRCodeSVG value={url} size={224} level="M" includeMargin={true} bgColor="#0a0a0a" fgColor="#e5e5e5" />
-            ) : (
-              <div
-                aria-label="Loading QR code"
-                className="flex h-56 w-56 items-center justify-center text-xs text-neutral-600"
-              >
-                Loading QR...
-              </div>
-            )}
+            <QRCode value={url} size={224} />
           </div>
           <button
             type="button"

@@ -9,6 +9,7 @@ import { useFaviconBadge } from "@/hooks/useFaviconBadge";
 import { usePeerMesh } from "@/hooks/usePeerMesh";
 import { useRealtimeSession } from "@/hooks/useRealtimeSession";
 import { deleteStoredBinaryClipsBySession } from "@/lib/clip-store";
+import { isPeerReady } from "@/lib/connection-state";
 import type { Clip, ClipZone } from "@/lib/clips";
 import { parseUtcTimestamp } from "@/lib/time";
 import {
@@ -364,7 +365,7 @@ export function useSessionPageController() {
   const connectedPeerIds = useMemo(() => {
     const set = new Set<string>();
     for (const p of peerMesh.peers) {
-      if (p.channelState === "open" || p.hasTunnel) set.add(p.peerId);
+      if (isPeerReady(p)) set.add(p.peerId);
     }
     return set;
   }, [peerMesh.peers]);

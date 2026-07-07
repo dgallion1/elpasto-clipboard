@@ -4,7 +4,7 @@ import { IdentifyFlashOverlay } from "@/components/IdentifyFlashOverlay";
 import { PasteZone } from "@/components/PasteZone";
 import { SecretPrompt } from "@/components/SecretPrompt";
 import { DeviceHandoff } from "@/components/DeviceHandoff";
-import { deriveConnectionState, type ConnectionState } from "@/lib/connection-state";
+import { connectionAnnouncement, deriveConnectionState, type ConnectionState } from "@/lib/connection-state";
 import { getSessionUrl } from "@/lib/session-url";
 import type { IdentifyFlashEvent, PeerInfo } from "@/hooks/usePeerMesh";
 import { useSessionHistory, buildSessionExportJson } from "@/hooks/useSessionHistory";
@@ -302,14 +302,8 @@ export function SessionPageView({
 
   return (
     <div className={`flex flex-col h-screen transition-colors duration-500 ${(unlockSecret || secretHandle) ? "bg-green-950/30" : ""}`}>
-      <span className="absolute h-px w-px overflow-hidden [clip:rect(0,0,0,0)]" role="status" aria-live="polite">
-        {connectionState === "connected-direct"
-          ? "Device connected"
-          : connectionState === "connected-tunnel"
-            ? "Device connected via relay"
-            : connectionState === "connecting"
-              ? "Device connecting"
-              : ""}
+      <span className="sr-only" role="status" aria-live="polite">
+        {connectionAnnouncement[connectionState]}
       </span>
       <SessionHeader
         token={session.token}

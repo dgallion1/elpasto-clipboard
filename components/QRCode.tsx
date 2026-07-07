@@ -18,16 +18,33 @@ type QRCodeSVGComponent = React.ComponentType<{
 
 export function QRCode({ value, size = 176 }: QRCodeProps) {
   const [QRCodeSVG, setQRCodeSVG] = useState<null | QRCodeSVGComponent>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    void import("qrcode.react").then((module) => {
-      if (!cancelled) setQRCodeSVG(() => module.QRCodeSVG);
-    });
+    import("qrcode.react")
+      .then((module) => {
+        if (!cancelled) setQRCodeSVG(() => module.QRCodeSVG);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  if (failed) {
+    return (
+      <div
+        role="alert"
+        className="flex items-center justify-center rounded bg-neutral-900 px-3 text-center text-xs text-neutral-500"
+        style={{ width: size, height: size }}
+      >
+        QR unavailable — use the URL or token instead
+      </div>
+    );
+  }
 
   if (!QRCodeSVG) {
     return (

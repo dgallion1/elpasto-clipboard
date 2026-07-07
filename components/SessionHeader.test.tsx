@@ -259,7 +259,9 @@ describe("SessionHeader", () => {
     );
 
     fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
-    expect(view.getByText("aaaa-bbb")).toBeTruthy();
+    // "aaaa-bbb" now appears twice: as the connection pill's label and as the
+    // peer's name in the opened dropdown.
+    expect(view.getAllByText("aaaa-bbb").length).toBeGreaterThan(0);
     expect(view.getByText("id aaaa-bbb")).toBeTruthy();
     expect(view.getByText("open")).toBeTruthy();
     expect(view.getByText("eeee-fff")).toBeTruthy();

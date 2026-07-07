@@ -103,7 +103,7 @@ export function DeviceHandoff({ state, sessionUrl, token, hasClips }: DeviceHand
             ✕
           </button>
         </div>
-        <QRCodeModal open={qrOpen} onClose={() => setQrOpen(false)} url={qrOpen ? sessionUrl : ""} />
+        {qrOpen && <QRCodeModal open onClose={() => setQrOpen(false)} url={sessionUrl} />}
       </>
     );
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import type { PeerInfo } from "@/hooks/usePeerMesh";
-import type { ConnectionState } from "@/lib/connection-state";
+import { isPeerReady, type ConnectionState } from "@/lib/connection-state";
 
 interface ConnectionPillProps {
   state: ConnectionState;
@@ -13,7 +13,7 @@ interface ConnectionPillProps {
 function connectedLabel(peers: PeerInfo[], peerNames: Record<string, string>): string {
   // Only count peers that are actually usable — a peer still negotiating
   // (channelState "connecting"/"none") must not inflate the device count.
-  const ready = peers.filter((p) => p.channelState === "open" || p.hasTunnel);
+  const ready = peers.filter(isPeerReady);
   if (ready.length === 0) return "device";
   if (ready.length === 1) {
     const p = ready[0];
