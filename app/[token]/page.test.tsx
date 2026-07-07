@@ -341,7 +341,7 @@ describe("SessionPage", () => {
       getTransferStats: getTransferStatsMock,
       subscribeToSendProgress: subscribeToSendProgressMock,
     });
-    expect(latestHeaderProps?.directPeerCount).toBe(2);
+    expect(latestHeaderProps?.connectionState).toBe("connected-direct");
     expect(latestHeaderProps?.totalClips).toBe(4);
 
     const peerMessage = {
