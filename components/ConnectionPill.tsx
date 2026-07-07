@@ -11,12 +11,15 @@ interface ConnectionPillProps {
 }
 
 function connectedLabel(peers: PeerInfo[], peerNames: Record<string, string>): string {
-  if (peers.length === 0) return "device";
-  if (peers.length === 1) {
-    const p = peers[0];
+  // Only count peers that are actually usable — a peer still negotiating
+  // (channelState "connecting"/"none") must not inflate the device count.
+  const ready = peers.filter((p) => p.channelState === "open" || p.hasTunnel);
+  if (ready.length === 0) return "device";
+  if (ready.length === 1) {
+    const p = ready[0];
     return peerNames[p.peerId] ?? p.name ?? p.peerId.slice(0, 8);
   }
-  return `${peers.length} devices`;
+  return `${ready.length} devices`;
 }
 
 export function ConnectionPill({ state, peers, peerNames, onClick }: ConnectionPillProps) {

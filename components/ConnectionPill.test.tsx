@@ -47,6 +47,32 @@ describe("ConnectionPill", () => {
     expect(view.getByText("2 devices")).toBeTruthy();
   });
 
+  test("ignores peers that are not ready when counting devices", () => {
+    const connecting: PeerInfo = { peerId: "p2", channelState: "connecting", hasTunnel: false };
+    const view = render(
+      <ConnectionPill
+        state="connected-direct"
+        peers={[peer("p1"), connecting]}
+        peerNames={{ p1: "Laptop" }}
+        onClick={() => undefined}
+      />
+    );
+    expect(view.getByText("Laptop")).toBeTruthy();
+  });
+
+  test("counts tunneled peers as connected", () => {
+    const tunneled: PeerInfo = { peerId: "p2", channelState: "none", hasTunnel: true };
+    const view = render(
+      <ConnectionPill
+        state="connected-direct"
+        peers={[peer("p1"), tunneled]}
+        peerNames={{}}
+        onClick={() => undefined}
+      />
+    );
+    expect(view.getByText("2 devices")).toBeTruthy();
+  });
+
   test("appends · relay for tunnel connections and fires onClick", () => {
     const onClick = vi.fn();
     const view = render(
