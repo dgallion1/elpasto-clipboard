@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { QRCode } from "./QRCode";
 import { QRCodeModal } from "./QRCodeModal";
 import type { ConnectionState } from "@/lib/connection-state";
@@ -15,17 +15,16 @@ interface DeviceHandoffProps {
 const dismissKey = (token: string) => `elpasto:handoff-dismissed:${token}`;
 
 export function DeviceHandoff({ state, sessionUrl, token, hasClips }: DeviceHandoffProps) {
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return sessionStorage.getItem(dismissKey(token)) === "1";
+    } catch {
+      return false;
+    }
+  });
   const [qrOpen, setQrOpen] = useState(false);
   const [copied, setCopied] = useState<"url" | "token" | null>(null);
-
-  useEffect(() => {
-    try {
-      setDismissed(sessionStorage.getItem(dismissKey(token)) === "1");
-    } catch {
-      setDismissed(false);
-    }
-  }, [token]);
 
   const dismiss = useCallback(() => {
     setDismissed(true);

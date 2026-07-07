@@ -411,6 +411,7 @@ export function SessionPageView({
       </div>
       <div className="flex flex-1 min-h-0 p-2 flex-col gap-2 pb-14 md:pb-2">
         <DeviceHandoff
+          key={token}
           state={connectionState}
           sessionUrl={getSessionUrl(token)}
           token={token}
