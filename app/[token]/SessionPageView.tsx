@@ -415,7 +415,7 @@ export function SessionPageView({
           state={connectionState}
           sessionUrl={getSessionUrl(token)}
           token={token}
-          hasClips={(activeZoneModel?.clips.length ?? 0) > 0}
+          hasClips={totalClips > 0}
         />
         {zones.map(({ zone, threadName, clips, onClearZone }) => (
           <PasteZone

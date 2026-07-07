@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { QRCode } from "./QRCode";
 import { QRCodeModal } from "./QRCodeModal";
 import type { ConnectionState } from "@/lib/connection-state";
@@ -27,6 +27,13 @@ export function DeviceHandoff({ state, sessionUrl, token, hasClips }: DeviceHand
   });
   const [qrOpen, setQrOpen] = useState(false);
   const [copied, setCopied] = useState<"url" | "token" | null>(null);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
+  }, []);
 
   const dismiss = useCallback(() => {
     setDismissed(true);
@@ -42,7 +49,8 @@ export function DeviceHandoff({ state, sessionUrl, token, hasClips }: DeviceHand
       try {
         await navigator.clipboard.writeText(kind === "url" ? sessionUrl : token);
         setCopied(kind);
-        setTimeout(() => setCopied(null), 2000);
+        if (copyTimer.current) clearTimeout(copyTimer.current);
+        copyTimer.current = setTimeout(() => setCopied(null), 2000);
       } catch {
         // ignore
       }
@@ -54,13 +62,16 @@ export function DeviceHandoff({ state, sessionUrl, token, hasClips }: DeviceHand
     return null;
   }
 
+  // Once dismissed, stay hidden for the rest of the session regardless of
+  // whether the thread later empties (which would otherwise re-show the panel).
+  if (dismissed) return null;
+
   const connecting = state === "connecting";
   const statusText = connecting ? "Device connecting…" : "Waiting for your other device…";
   const dotClass = connecting ? "bg-amber-400 animate-pulse" : "bg-neutral-500 animate-pulse";
 
   // Slim banner once the thread has content — never covers clips.
   if (hasClips) {
-    if (dismissed) return null;
     return (
       <>
         <div

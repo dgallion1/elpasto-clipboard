@@ -41,6 +41,18 @@ describe("DeviceHandoff", () => {
     expect(sessionStorage.getItem("elpasto:handoff-dismissed:elk-piano-river")).toBe("1");
   });
 
+  test("stays hidden after dismiss even when the thread later empties", () => {
+    const view = render(
+      <DeviceHandoff state="waiting" sessionUrl={url} token="elk-piano-river" hasClips={true} />
+    );
+    fireEvent.click(view.getByLabelText("Dismiss"));
+    view.rerender(
+      <DeviceHandoff state="waiting" sessionUrl={url} token="elk-piano-river" hasClips={false} />
+    );
+    expect(view.queryByText("No device linked yet")).toBeNull();
+    expect(view.queryByText("Scan to link your phone")).toBeNull();
+  });
+
   test("stays hidden on mount when already dismissed for this token", () => {
     sessionStorage.setItem("elpasto:handoff-dismissed:elk-piano-river", "1");
     const view = render(
