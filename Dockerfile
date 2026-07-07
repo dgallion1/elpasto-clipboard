@@ -1,7 +1,7 @@
 FROM node:22-alpine AS frontend
 
 WORKDIR /app
-RUN apk add --no-cache curl && corepack enable && corepack prepare pnpm@latest --activate
+RUN apk add --no-cache curl && corepack enable && corepack prepare pnpm@9 --activate
 COPY package.json pnpm-lock.yaml ./
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
 COPY next.config.ts tsconfig.json postcss.config.mjs ./
