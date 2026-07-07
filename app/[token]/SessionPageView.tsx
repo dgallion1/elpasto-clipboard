@@ -316,6 +316,7 @@ export function SessionPageView({
         hasUnlockSecret={Boolean(unlockSecret)}
         secretMode={secretMode}
         directPeerCount={readyPeerCount}
+        connectionState={connectionState}
         localPeerId={localPeerId}
         peerNames={peerNames}
         peers={peers}

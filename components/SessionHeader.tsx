@@ -13,7 +13,9 @@ import { HelpModal } from "./HelpModal";
 import { QRCodeModal } from "./QRCodeModal";
 import { SoundDropdown } from "./SoundDropdown";
 import { TunnelBadge } from "./TunnelBadge";
+import { ConnectionPill } from "./ConnectionPill";
 import type { TunnelInfo } from "@/hooks/useTunnelRelay";
+import type { ConnectionState } from "@/lib/connection-state";
 
 interface SessionHistoryProps {
   entries: SessionEntry[];
@@ -28,6 +30,7 @@ interface SessionHeaderProps {
   hasUnlockSecret: boolean;
   secretMode?: "normal" | "paranoid" | null;
   directPeerCount: number;
+  connectionState: ConnectionState;
   localPeerId: string;
   peerNames: Record<string, string>;
   peers: PeerInfo[];
@@ -81,7 +84,7 @@ export function SessionHeader({
   token,
   hasUnlockSecret,
   secretMode,
-  directPeerCount,
+  connectionState,
   localPeerId,
   peerNames,
   peers,
@@ -493,17 +496,15 @@ export function SessionHeader({
             Secret active
           </span>
         )}
-        {peers.length > 0 && (
+        {connectionState !== "waiting" && (
           <div className="relative" ref={peerListRef}>
-            <button
+            <ConnectionPill
+              state={connectionState}
+              peers={peers}
+              peerNames={peerNames}
               onClick={openPeerMenu}
-              className="rounded-full border border-emerald-900 bg-emerald-950/60 px-2 py-0.5 text-xs text-emerald-300 hover:bg-emerald-900/40 transition-colors cursor-pointer"
-            >
-              {directPeerCount === 1
-                ? "1 direct peer"
-                : `${directPeerCount} direct peers`}
-            </button>
-            {peerListOpen && (
+            />
+            {peerListOpen && peers.length > 0 && (
               <div className="absolute top-full left-0 mt-1 z-10 rounded-md border border-neutral-700 bg-neutral-800 p-2 text-xs shadow-lg min-w-[200px]">
                 {allPeers.map((p) => (
                   <div key={p.peerId} className="flex items-center gap-2 py-0.5 group">

@@ -7,8 +7,6 @@ interface ConnectionPillProps {
   state: ConnectionState;
   peers: PeerInfo[];
   peerNames: Record<string, string>;
-  /** One-shot emerald ring when a connection is freshly established. */
-  pulse?: boolean;
   onClick: () => void;
 }
 
@@ -21,7 +19,7 @@ function connectedLabel(peers: PeerInfo[], peerNames: Record<string, string>): s
   return `${peers.length} devices`;
 }
 
-export function ConnectionPill({ state, peers, peerNames, pulse, onClick }: ConnectionPillProps) {
+export function ConnectionPill({ state, peers, peerNames, onClick }: ConnectionPillProps) {
   if (state === "waiting") return null;
 
   if (state === "connecting") {
@@ -39,12 +37,11 @@ export function ConnectionPill({ state, peers, peerNames, pulse, onClick }: Conn
 
   const isTunnel = state === "connected-tunnel";
   const label = connectedLabel(peers, peerNames);
-  const ring = pulse ? "ring-2 ring-emerald-400/60" : "";
   return (
     <button
       onClick={onClick}
       aria-label={`Connection status: connected to ${label}${isTunnel ? " via relay" : ""}`}
-      className={`flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs transition-all cursor-pointer ${ring} ${
+      className={`flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs transition-all cursor-pointer ${
         isTunnel
           ? "border-sky-900 bg-sky-950/50 text-sky-300 hover:bg-sky-900/40"
           : "border-emerald-900 bg-emerald-950/60 text-emerald-300 hover:bg-emerald-900/40"

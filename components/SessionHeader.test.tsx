@@ -125,6 +125,7 @@ const defaultProps = {
   token: "demo-token",
   hasUnlockSecret: false,
   directPeerCount: 0,
+  connectionState: "waiting" as const,
   localPeerId: "local-0000-0000-0000",
   peerNames: {} as Record<string, string>,
   peers: [] as { peerId: string; channelState: RTCDataChannelState | "none"; hasTunnel: boolean }[],
@@ -201,7 +202,7 @@ describe("SessionHeader", () => {
     expect(homeLink.getAttribute("href")).toBe("/");
   });
 
-  test("renders direct peer badges for singular and plural counts", () => {
+  test("renders the connection pill for singular and plural peer counts", () => {
     const onePeer = [{ peerId: "aaaa-bbbb-cccc-dddd", channelState: "open" as const, hasTunnel: false }];
     const twoPeers = [
       { peerId: "aaaa-bbbb-cccc-dddd", channelState: "open" as const, hasTunnel: false },
@@ -209,16 +210,46 @@ describe("SessionHeader", () => {
     ];
 
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={onePeer} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={onePeer} connectionState="connected-direct" />
     );
 
-    expect(view.getByText("1 direct peer")).toBeTruthy();
+    expect(view.getByText("aaaa-bbb")).toBeTruthy();
 
     view.rerender(
-      <SessionHeader {...defaultProps} directPeerCount={2} peers={twoPeers} />
+      <SessionHeader {...defaultProps} directPeerCount={2} peers={twoPeers} connectionState="connected-direct" />
     );
 
-    expect(view.getByText("2 direct peers")).toBeTruthy();
+    expect(view.getByText("2 devices")).toBeTruthy();
+  });
+
+  test("shows the connected peer name in the header pill", () => {
+    const view = render(
+      <SessionHeader
+        {...defaultProps}
+        peers={[{ peerId: "p1", channelState: "open" as const, hasTunnel: false }]}
+        peerNames={{ p1: "Laptop" }}
+        directPeerCount={1}
+        connectionState="connected-direct"
+      />
+    );
+    expect(view.getByText("Laptop")).toBeTruthy();
+  });
+
+  test("shows Linking… in the pill while connecting", () => {
+    const view = render(
+      <SessionHeader
+        {...defaultProps}
+        peers={[{ peerId: "p1", channelState: "connecting" as const, hasTunnel: false }]}
+        directPeerCount={0}
+        connectionState="connecting"
+      />
+    );
+    expect(view.getByText("Linking…")).toBeTruthy();
+  });
+
+  test("hides the connection pill entirely while waiting (no peers)", () => {
+    const view = render(<SessionHeader {...defaultProps} />);
+    expect(view.queryByRole("button", { name: /Connection status/ })).toBeNull();
   });
 
   test("shows peer list with connection status on click", () => {
@@ -227,10 +258,10 @@ describe("SessionHeader", () => {
       { peerId: "eeee-ffff-1111-2222", channelState: "connecting" as const, hasTunnel: false },
     ];
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" />
     );
 
-    fireEvent.click(view.getByText("1 direct peer"));
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
     expect(view.getByText("aaaa-bbb")).toBeTruthy();
     expect(view.getByText("id aaaa-bbb")).toBeTruthy();
     expect(view.getByText("open")).toBeTruthy();
@@ -242,10 +273,10 @@ describe("SessionHeader", () => {
   test("shows the local peer id alongside the you label", () => {
     const peers = [{ peerId: "aaaa-bbbb-cccc-dddd", channelState: "open" as const, hasTunnel: false }];
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" />
     );
 
-    fireEvent.click(view.getByText("1 direct peer"));
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
     expect(view.getByText("you")).toBeTruthy();
     expect(view.getByText("id local-00")).toBeTruthy();
   });
@@ -570,7 +601,7 @@ describe("SessionHeader", () => {
   test("opening one dropdown closes the other", () => {
     const peers = [{ peerId: "aaaa-bbbb-cccc-dddd", channelState: "open" as const, hasTunnel: false }];
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" />
     );
 
     // Open session menu
@@ -578,13 +609,13 @@ describe("SessionHeader", () => {
     expect(view.getByRole("menu")).toBeTruthy();
 
     // Open peer menu — session menu should close
-    fireEvent.click(view.getByText("1 direct peer"));
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
     expect(view.queryByRole("menu")).toBeNull();
-    expect(view.getByText("aaaa-bbb")).toBeTruthy();
+    expect(view.getByText("id aaaa-bbb")).toBeTruthy();
 
     // Open session menu again — peer list should close
     fireEvent.click(view.getByRole("button", { name: "Session menu" }));
-    expect(view.queryByText("aaaa-bbb")).toBeNull();
+    expect(view.queryByText("id aaaa-bbb")).toBeNull();
     expect(view.getByRole("menu")).toBeTruthy();
   });
 
@@ -800,9 +831,9 @@ describe("SessionHeader", () => {
       { peerId: "peer-none-1234-5678", channelState: "none" as const, hasTunnel: false },
     ];
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" />
     );
-    fireEvent.click(view.getByText("1 direct peer"));
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
     expect(view.getByText("negotiating")).toBeTruthy();
   });
 
@@ -811,9 +842,9 @@ describe("SessionHeader", () => {
       { peerId: "peer-clos-1234-5678", channelState: "closed" as const, hasTunnel: false },
     ];
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" />
     );
-    fireEvent.click(view.getByText("1 direct peer"));
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
     expect(view.getByText("closed")).toBeTruthy();
   });
 
@@ -823,10 +854,10 @@ describe("SessionHeader", () => {
     ];
     const peerNames = { "aaaa-bbbb-cccc-dddd": "My Laptop" };
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} peerNames={peerNames} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" peerNames={peerNames} />
     );
-    fireEvent.click(view.getByText("1 direct peer"));
-    expect(view.getByText("My Laptop")).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
+    expect(view.getAllByTitle("Click to rename")[1].textContent).toContain("My Laptop");
   });
 
   test("shows custom name for the local peer", () => {
@@ -835,9 +866,9 @@ describe("SessionHeader", () => {
     ];
     const peerNames = { "local-0000-0000-0000": "Home Desktop" };
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} peerNames={peerNames} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" peerNames={peerNames} />
     );
-    fireEvent.click(view.getByText("1 direct peer"));
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
     expect(view.getByText("Home Desktop")).toBeTruthy();
   });
 
@@ -849,12 +880,12 @@ describe("SessionHeader", () => {
       { peerId: "aaaa-bbbb-cccc-dddd", channelState: "open" as const, hasTunnel: false },
     ];
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} onRenamePeer={onRenamePeer} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" onRenamePeer={onRenamePeer} />
     );
-    fireEvent.click(view.getByText("1 direct peer"));
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
 
     // Click on the remote peer name to start editing
-    fireEvent.click(view.getByText("aaaa-bbb"));
+    fireEvent.click(view.getAllByTitle("Click to rename")[1]);
     const input = view.container.querySelector('input[maxlength="20"]') as HTMLInputElement;
     expect(input).toBeTruthy();
     fireEvent.change(input, { target: { value: "  Work PC  " } });
@@ -868,10 +899,10 @@ describe("SessionHeader", () => {
       { peerId: "aaaa-bbbb-cccc-dddd", channelState: "open" as const, hasTunnel: false },
     ];
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} onRenamePeer={onRenamePeer} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" onRenamePeer={onRenamePeer} />
     );
-    fireEvent.click(view.getByText("1 direct peer"));
-    fireEvent.click(view.getByText("aaaa-bbb"));
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
+    fireEvent.click(view.getAllByTitle("Click to rename")[1]);
     const input = view.container.querySelector('input[maxlength="20"]') as HTMLInputElement;
     fireEvent.change(input, { target: { value: "" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -884,10 +915,10 @@ describe("SessionHeader", () => {
       { peerId: "aaaa-bbbb-cccc-dddd", channelState: "open" as const, hasTunnel: false },
     ];
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} onRenamePeer={onRenamePeer} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" onRenamePeer={onRenamePeer} />
     );
-    fireEvent.click(view.getByText("1 direct peer"));
-    fireEvent.click(view.getByText("aaaa-bbb"));
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
+    fireEvent.click(view.getAllByTitle("Click to rename")[1]);
     const input = view.container.querySelector('input[maxlength="20"]') as HTMLInputElement;
     fireEvent.change(input, { target: { value: "something" } });
     fireEvent.keyDown(input, { key: "Escape" });
@@ -902,10 +933,10 @@ describe("SessionHeader", () => {
       { peerId: "aaaa-bbbb-cccc-dddd", channelState: "open" as const, hasTunnel: false },
     ];
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} onRenamePeer={onRenamePeer} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" onRenamePeer={onRenamePeer} />
     );
-    fireEvent.click(view.getByText("1 direct peer"));
-    fireEvent.click(view.getByText("aaaa-bbb"));
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
+    fireEvent.click(view.getAllByTitle("Click to rename")[1]);
     const input = view.container.querySelector('input[maxlength="20"]') as HTMLInputElement;
     fireEvent.change(input, { target: { value: "via blur" } });
     fireEvent.blur(input);
@@ -920,9 +951,9 @@ describe("SessionHeader", () => {
       { peerId: "aaaa-bbbb-cccc-dddd", channelState: "open" as const, hasTunnel: false },
     ];
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} onPingPeer={onPingPeer} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" onPingPeer={onPingPeer} />
     );
-    fireEvent.click(view.getByText("1 direct peer"));
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
     const pingBtn = view.getByTitle("Ping this device");
     fireEvent.click(pingBtn);
     expect(onPingPeer).toHaveBeenCalledWith("aaaa-bbbb-cccc-dddd");
@@ -933,9 +964,9 @@ describe("SessionHeader", () => {
       { peerId: "aaaa-bbbb-cccc-dddd", channelState: "connecting" as const, hasTunnel: false },
     ];
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" />
     );
-    fireEvent.click(view.getByText("1 direct peer"));
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
     expect(view.container.querySelector('[title="Ping this device"]')).toBeNull();
   });
 
@@ -945,9 +976,9 @@ describe("SessionHeader", () => {
       { peerId: "aaaa-bbbb-cccc-dddd", channelState: "open" as const, hasTunnel: false },
     ];
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" />
     );
-    fireEvent.click(view.getByText("1 direct peer"));
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
     // One ping button for the single remote peer, none for local
     const pingBtns = view.container.querySelectorAll('[title="Ping this device"]');
     expect(pingBtns.length).toBe(1);
@@ -960,14 +991,14 @@ describe("SessionHeader", () => {
       { peerId: "aaaa-bbbb-cccc-dddd", channelState: "open" as const, hasTunnel: false },
     ];
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" />
     );
-    fireEvent.click(view.getByText("1 direct peer"));
-    expect(view.getByText("aaaa-bbb")).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
+    expect(view.getByText("id aaaa-bbb")).toBeTruthy();
 
     // Rerender with empty peers — dropdown should close
     view.rerender(<SessionHeader {...defaultProps} directPeerCount={0} peers={[]} />);
-    expect(view.queryByText("aaaa-bbb")).toBeNull();
+    expect(view.queryByText("id aaaa-bbb")).toBeNull();
   });
 
   // ─── Session label on entry with existing label ───────────────────────
@@ -1130,15 +1161,15 @@ describe("SessionHeader", () => {
       { peerId: "aaaa-bbbb-cccc-dddd", channelState: "open" as const, hasTunnel: false },
     ];
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" />
     );
-    fireEvent.click(view.getByText("1 direct peer"));
-    expect(view.getByText("aaaa-bbb")).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
+    expect(view.getByText("id aaaa-bbb")).toBeTruthy();
 
     await act(async () => {
       fireEvent.mouseDown(document.body);
     });
-    expect(view.queryByText("aaaa-bbb")).toBeNull();
+    expect(view.queryByText("id aaaa-bbb")).toBeNull();
   });
 
   test("aria-expanded reflects session menu open state", () => {
@@ -1195,9 +1226,9 @@ describe("SessionHeader", () => {
       { peerId: "aaaa-bbbb-cccc-dddd", channelState: "open" as const, hasTunnel: false },
     ];
     const view = render(
-      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} />
+      <SessionHeader {...defaultProps} directPeerCount={1} peers={peers} connectionState="connected-direct" />
     );
-    fireEvent.click(view.getByText("1 direct peer"));
+    fireEvent.click(view.getByRole("button", { name: /Connection status/ }));
     expect(view.getByText("this device")).toBeTruthy();
   });
 });
