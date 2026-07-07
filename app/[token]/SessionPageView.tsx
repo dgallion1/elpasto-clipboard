@@ -3,6 +3,9 @@ import { SessionHeader } from "@/components/SessionHeader";
 import { IdentifyFlashOverlay } from "@/components/IdentifyFlashOverlay";
 import { PasteZone } from "@/components/PasteZone";
 import { SecretPrompt } from "@/components/SecretPrompt";
+import { DeviceHandoff } from "@/components/DeviceHandoff";
+import { deriveConnectionState, type ConnectionState } from "@/lib/connection-state";
+import { getSessionUrl } from "@/lib/session-url";
 import type { IdentifyFlashEvent, PeerInfo } from "@/hooks/usePeerMesh";
 import { useSessionHistory, buildSessionExportJson } from "@/hooks/useSessionHistory";
 import type { ImportEntry } from "@/hooks/useSessionHistory";
@@ -148,6 +151,7 @@ export function SessionPageView({
   const sessionHistory = useSessionHistory(token);
   const [editingThreads, setEditingThreads] = useState(false);
   const activeZone = activeThreadId ?? zones[0]?.zone ?? null;
+  const connectionState: ConnectionState = deriveConnectionState({ peers, readyPeerCount, tunnels });
 
   const onExportSessions = useCallback(async () => {
     const json = buildSessionExportJson(sessionHistory.entries, { peerNames, currentToken: token });
@@ -298,6 +302,15 @@ export function SessionPageView({
 
   return (
     <div className={`flex flex-col h-screen transition-colors duration-500 ${(unlockSecret || secretHandle) ? "bg-green-950/30" : ""}`}>
+      <span className="absolute h-px w-px overflow-hidden [clip:rect(0,0,0,0)]" role="status" aria-live="polite">
+        {connectionState === "connected-direct"
+          ? "Device connected"
+          : connectionState === "connected-tunnel"
+            ? "Device connected via relay"
+            : connectionState === "connecting"
+              ? "Device connecting"
+              : ""}
+      </span>
       <SessionHeader
         token={session.token}
         hasUnlockSecret={Boolean(unlockSecret)}
@@ -397,6 +410,12 @@ export function SessionPageView({
         </div>
       </div>
       <div className="flex flex-1 min-h-0 p-2 flex-col gap-2 pb-14 md:pb-2">
+        <DeviceHandoff
+          state={connectionState}
+          sessionUrl={getSessionUrl(token)}
+          token={token}
+          hasClips={(activeZoneModel?.clips.length ?? 0) > 0}
+        />
         {zones.map(({ zone, threadName, clips, onClearZone }) => (
           <PasteZone
             key={zone}

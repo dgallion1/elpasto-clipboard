@@ -590,6 +590,32 @@ describe("SessionPageView peer name restore", () => {
   });
 });
 
+describe("SessionPageView device handoff", () => {
+  test("shows the handoff panel when alone with an empty thread", () => {
+    mockMatchMedia(false);
+    const props = makeProps({
+      peers: [],
+      readyPeerCount: 0,
+      tunnels: [],
+      zones: [{ zone: "A", threadName: "A", clips: [], onClearZone: async () => {} }],
+    });
+    const { getByText } = render(<SessionPageView {...props} />);
+    expect(getByText("Scan to link your phone")).toBeTruthy();
+  });
+
+  test("hides the handoff panel once a peer is connected", () => {
+    mockMatchMedia(false);
+    const props = makeProps({
+      peers: [{ peerId: "p1", channelState: "open", hasTunnel: false }],
+      readyPeerCount: 1,
+      tunnels: [],
+      zones: [{ zone: "A", threadName: "A", clips: [], onClearZone: async () => {} }],
+    });
+    const { queryByText } = render(<SessionPageView {...props} />);
+    expect(queryByText("Scan to link your phone")).toBeNull();
+  });
+});
+
 describe("SessionPageView import applies peerNames", () => {
   test("calls renamePeer for each imported peerName matching current session", async () => {
     mockMatchMedia(false);
