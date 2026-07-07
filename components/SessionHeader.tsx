@@ -7,6 +7,7 @@ import type { PeerInfo } from "@/hooks/usePeerMesh";
 import type { SessionEntry } from "@/hooks/useSessionHistory";
 import { buildApiUrl } from "@/lib/api";
 import { normalizeTokenInput } from "@/lib/token-validation";
+import { getSessionUrl as buildSessionUrl } from "@/lib/session-url";
 import type { SoundName, SoundVolume } from "@/hooks/useNotificationSound";
 import { HelpModal } from "./HelpModal";
 import { QRCodeModal } from "./QRCodeModal";
@@ -218,13 +219,7 @@ export function SessionHeader({
     return () => controller.abort();
   }, [sessionListOpen, entries, token]);
 
-  const getSessionUrl = useCallback(() => {
-    const url = new URL(window.location.href);
-    url.pathname = `/${token}`;
-    url.search = "";
-    url.hash = "";
-    return url.toString().replace(/#$/, "");
-  }, [token]);
+  const getSessionUrl = useCallback(() => buildSessionUrl(token), [token]);
 
   const clearAll = useCallback(async () => {
     if (!clearConfirm) {
